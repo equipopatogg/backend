@@ -41,3 +41,19 @@ public sealed class GroupResponse
     public int MyPoints { get; init; }
     public DateTime CreatedAt { get; init; }
 }
+
+public sealed class JoinGroupRequest
+{
+    [Required, RegularExpression("^[A-Za-z0-9]{6}$", ErrorMessage = "code debe tener 6 caracteres alfanuméricos.")]
+    public string Code { get; set; } = string.Empty;
+}
+
+public sealed class GroupMemberResponse
+{
+    public string UserId { get; init; } = string.Empty;
+    public string Nickname { get; init; } = string.Empty;
+    public string AvatarId { get; init; } = "default";
+    public string Role { get; init; } = "member";
+    public int PointsBalance { get; init; }
+    public DateTime JoinedAt { get; init; }
+}

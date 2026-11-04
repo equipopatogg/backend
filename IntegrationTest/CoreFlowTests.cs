@@ -30,12 +30,17 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
     public InMemoryRefreshTokenRepository RefreshTokens { get; } = new();
     public InMemoryGroupRepository Groups { get; } = new();
     public InMemoryGroupMemberRepository Members { get; } = new();
-    public InMemoryContractRepository Contracts { get; } = new();
+    public InMemoryContractRepository Contracts { get; }
     public InMemoryEvidenceRepository Evidence { get; } = new();
     public InMemoryTournamentRepository Tournaments { get; } = new();
     public InMemoryMatchRepository Matches { get; } = new();
     public FakeObjectStorage Storage { get; } = new();
     public FakeModerationService Moderation { get; } = new();
+
+    public PactoggWebFactory()
+    {
+        Contracts = new InMemoryContractRepository(Members);
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

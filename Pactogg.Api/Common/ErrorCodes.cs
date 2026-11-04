@@ -22,6 +22,10 @@ public static class ErrorCodes
     public const string InvalidBond = "INVALID_BOND";
     public const string InvalidTarget = "INVALID_TARGET";
     public const string RateLimited = "RATE_LIMITED";
+    public const string InsufficientPoints = "INSUFFICIENT_POINTS";
+    public const string AlreadyMember = "ALREADY_MEMBER";
+    public const string GroupFull = "GROUP_FULL";
+    public const string CannotAcceptOwnContract = "CANNOT_ACCEPT_OWN_CONTRACT";
     public const string ModerationUnavailable = "MODERATION_UNAVAILABLE";
     public const string StorageUnavailable = "STORAGE_UNAVAILABLE";
     public const string DatabaseUnavailable = "DATABASE_UNAVAILABLE";

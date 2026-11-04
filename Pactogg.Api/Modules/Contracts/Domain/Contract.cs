@@ -45,6 +45,12 @@ public sealed class Contract
     [BsonElement("accepted_at")]
     public DateTime? AcceptedAt { get; set; }
 
+    [BsonElement("rejected_by")]
+    public ObjectId? RejectedBy { get; set; }
+
+    [BsonElement("closed_reason")]
+    public string? ClosedReason { get; set; }
+
     [BsonElement("source")]
     public string Source { get; set; } = "manual";
 

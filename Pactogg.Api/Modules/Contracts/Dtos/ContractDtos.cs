@@ -41,6 +41,20 @@ public sealed class ContractResponse
     public DateTime Deadline { get; init; }
     public int BondRequired { get; init; }
     public string Status { get; init; } = string.Empty;
+    public string? AcceptedBy { get; init; }
+    public DateTime? AcceptedAt { get; init; }
+    public string? ClosedReason { get; init; }
+    public int EvidenceCount { get; init; }
     public int Version { get; init; }
     public DateTime CreatedAt { get; init; }
+    public DateTime UpdatedAt { get; init; }
+
+    /// <summary>Solo en la respuesta de aceptar: saldo del usuario en el grupo después de retener la fianza.</summary>
+    public int? MyPoints { get; init; }
+}
+
+public sealed class ContractActionRequest
+{
+    /// <summary>Versión que la app vio; si otro la cambió antes, 409. Opcional.</summary>
+    public int? Version { get; set; }
 }

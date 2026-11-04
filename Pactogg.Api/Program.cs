@@ -29,6 +29,7 @@ using Pactogg.Api.Modules.Evidence;
 using Pactogg.Api.Modules.Evidence.Abstractions;
 using Pactogg.Api.Modules.Groups;
 using Pactogg.Api.Modules.Groups.Abstractions;
+using Pactogg.Api.Modules.Users;
 using Pactogg.Api.Modules.Tournaments;
 using Pactogg.Api.Modules.Tournaments.Abstractions;
 using Serilog;
@@ -250,6 +251,7 @@ builder.Services.AddScoped<GroupService>();
 builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<EvidenceService>();
 builder.Services.AddScoped<TournamentService>();
+builder.Services.AddScoped<UserService>();
 
 var app = builder.Build();
 
@@ -282,12 +284,13 @@ app.UseAuthorization();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.2.0",
+    version = "0.5.0",
     status = "ok"
 })).AllowAnonymous();
 
 app.MapHealthChecks("/health").AllowAnonymous();
 app.MapAuthEndpoints();
+app.MapUserEndpoints();
 app.MapGroupEndpoints();
 app.MapContractEndpoints();
 app.MapEvidenceEndpoints();

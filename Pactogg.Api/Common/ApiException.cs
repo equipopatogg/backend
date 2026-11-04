@@ -20,6 +20,9 @@ public sealed class ApiException : Exception
     public static ApiException Unauthorized(string code = ErrorCodes.Unauthorized, string message = "Autenticación requerida.") =>
         new(StatusCodes.Status401Unauthorized, code, message);
 
+    public static ApiException PaymentRequired(string code, string message) =>
+        new(StatusCodes.Status402PaymentRequired, code, message);
+
     public static ApiException Forbidden(string code, string message) =>
         new(StatusCodes.Status403Forbidden, code, message);
 

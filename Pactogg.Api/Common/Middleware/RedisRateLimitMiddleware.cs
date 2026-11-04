@@ -30,7 +30,7 @@ public sealed class RedisRateLimitMiddleware
         }
 
         var policy = ResolvePolicy(context.Request.Path);
-        var identity = policy.Name is "login" or "register"
+        var identity = policy.Name is "login" or "register" or "nickname"
             ? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"
             : context.User.FindFirstValue("sub")
                 ?? context.Connection.RemoteIpAddress?.ToString()
@@ -64,6 +64,16 @@ public sealed class RedisRateLimitMiddleware
             || string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase))
         {
             return ("login", _options.LoginPermitLimit, TimeSpan.FromSeconds(_options.LoginWindowSeconds));
+        }
+
+        if (string.Equals(path.Value, "/api/v1/users/check-nickname", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("nickname", _options.NicknameCheckPermitLimit, TimeSpan.FromSeconds(_options.NicknameCheckWindowSeconds));
+        }
+
+        if (string.Equals(path.Value, "/api/v1/groups/join", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("join", _options.JoinPermitLimit, TimeSpan.FromSeconds(_options.JoinWindowSeconds));
         }
 
         if (path.Value?.EndsWith("/evidence", StringComparison.OrdinalIgnoreCase) == true)

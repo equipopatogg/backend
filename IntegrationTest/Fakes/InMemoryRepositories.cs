@@ -10,6 +10,7 @@ using Pactogg.Api.Modules.Contracts.Domain;
 using Pactogg.Api.Modules.Evidence.Abstractions;
 using Pactogg.Api.Modules.Groups.Abstractions;
 using Pactogg.Api.Modules.Groups.Domain;
+using Pactogg.Api.Modules.Points.Domain;
 using Pactogg.Api.Modules.Tournaments.Abstractions;
 using Pactogg.Api.Modules.Tournaments.Domain;
 using EvidenceEntity = Pactogg.Api.Modules.Evidence.Domain.Evidence;
@@ -28,6 +29,40 @@ public sealed class InMemoryUserRepository : IUserRepository
 
     public Task<User?> GetByNicknameAsync(string nicknameLower, CancellationToken cancellationToken) =>
         Task.FromResult(_users.Values.FirstOrDefault(x => x.NicknameLower == nicknameLower && x.DeletedAt is null));
+
+    public Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<User>>(_users.Values.Where(x => ids.Contains(x.Id)).ToList());
+
+    public Task<User?> UpdateProfileAsync(ObjectId id, string? nickname, string? avatarId, DateTime at, CancellationToken cancellationToken)
+    {
+        lock (_users)
+        {
+            if (!_users.TryGetValue(id, out var user))
+            {
+                return Task.FromResult<User?>(null);
+            }
+
+            if (nickname is not null)
+            {
+                var lower = nickname.ToLowerInvariant();
+                if (_users.Values.Any(x => x.Id != id && x.NicknameLower == lower))
+                {
+                    throw Pactogg.Api.Common.ApiException.Conflict("NICKNAME_ALREADY_EXISTS", "El apodo ya está en uso.");
+                }
+
+                user.Nickname = nickname;
+                user.NicknameLower = lower;
+            }
+
+            if (avatarId is not null)
+            {
+                user.AvatarId = avatarId;
+            }
+
+            user.UpdatedAt = at;
+            return Task.FromResult<User?>(user);
+        }
+    }
 
     public Task CreateAsync(User user, CancellationToken cancellationToken)
     {
@@ -107,6 +142,59 @@ public sealed class InMemoryGroupRepository : IGroupRepository
     public Task<bool> InviteCodeExistsAsync(string inviteCode, CancellationToken cancellationToken) =>
         Task.FromResult(_groups.Values.Any(x => x.InviteCode == inviteCode));
 
+    public Task<Group?> GetByInviteCodeAsync(string inviteCode, CancellationToken cancellationToken) =>
+        Task.FromResult(_groups.Values.FirstOrDefault(x => x.InviteCode == inviteCode && x.InviteActive && x.DeletedAt is null));
+
+    public Task<(IReadOnlyList<Group> Items, bool HasMore)> ListByIdsAsync(
+        IReadOnlyCollection<ObjectId> ids,
+        string? nameContains,
+        int limit,
+        ObjectId? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _groups.Values.Where(x => ids.Contains(x.Id) && x.DeletedAt is null);
+        if (!string.IsNullOrWhiteSpace(nameContains))
+        {
+            query = query.Where(x => x.Name.Contains(nameContains, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (cursor.HasValue)
+        {
+            query = query.Where(x => x.Id < cursor.Value);
+        }
+
+        var items = query.OrderByDescending(x => x.Id).Take(limit + 1).ToList();
+        return Task.FromResult<(IReadOnlyList<Group>, bool)>((items.Take(limit).ToList(), items.Count > limit));
+    }
+
+    public Task<Group?> TryIncrementMemberCountAsync(ObjectId id, int maxMembers, DateTime at, CancellationToken cancellationToken)
+    {
+        lock (_groups)
+        {
+            if (!_groups.TryGetValue(id, out var group) || group.MemberCount >= maxMembers)
+            {
+                return Task.FromResult<Group?>(null);
+            }
+
+            group.MemberCount++;
+            group.UpdatedAt = at;
+            return Task.FromResult<Group?>(group);
+        }
+    }
+
+    public Task DecrementMemberCountAsync(ObjectId id, CancellationToken cancellationToken)
+    {
+        lock (_groups)
+        {
+            if (_groups.TryGetValue(id, out var group) && group.MemberCount > 0)
+            {
+                group.MemberCount--;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(ObjectId id, CancellationToken cancellationToken)
     {
         _groups.TryRemove(id, out _);
@@ -131,16 +219,181 @@ public sealed class InMemoryGroupMemberRepository : IGroupMemberRepository
             .Distinct()
             .ToList());
 
+    public Task<IReadOnlyList<GroupMember>> ListForUserAsync(ObjectId userId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<GroupMember>>(_members.Values.Where(x => x.UserId == userId && x.Status == "active").ToList());
+
+    public Task<(IReadOnlyList<GroupMember> Items, bool HasMore)> ListByGroupAsync(
+        ObjectId groupId,
+        string? nickPrefix,
+        int limit,
+        ObjectId? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _members.Values.Where(x => x.GroupId == groupId && x.Status == "active");
+        if (!string.IsNullOrWhiteSpace(nickPrefix))
+        {
+            query = query.Where(x => x.NickLower.StartsWith(nickPrefix, StringComparison.Ordinal));
+        }
+
+        if (cursor.HasValue)
+        {
+            query = query.Where(x => x.Id > cursor.Value);
+        }
+
+        var items = query.OrderBy(x => x.Id).Take(limit + 1).ToList();
+        return Task.FromResult<(IReadOnlyList<GroupMember>, bool)>((items.Take(limit).ToList(), items.Count > limit));
+    }
+
     public Task CreateAsync(GroupMember member, CancellationToken cancellationToken)
     {
-        _members[member.Id] = member;
+        lock (_members)
+        {
+            if (_members.Values.Any(x => x.GroupId == member.GroupId && x.UserId == member.UserId))
+            {
+                throw Pactogg.Api.Common.ApiException.Conflict("ALREADY_MEMBER", "Ya perteneces a este grupo.");
+            }
+
+            _members[member.Id] = member;
+        }
+
         return Task.CompletedTask;
+    }
+
+    public Task UpdateNickLowerAsync(ObjectId userId, string nickLower, CancellationToken cancellationToken)
+    {
+        foreach (var member in _members.Values.Where(x => x.UserId == userId))
+        {
+            member.NickLower = nickLower;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Solo para pruebas: fija el saldo de un miembro.</summary>
+    public void SetBalance(ObjectId groupId, ObjectId userId, int balance)
+    {
+        var member = _members.Values.First(x => x.GroupId == groupId && x.UserId == userId);
+        member.PointsBalance = balance;
     }
 }
 
 public sealed class InMemoryContractRepository : IContractRepository
 {
     private readonly ConcurrentDictionary<ObjectId, Contract> _contracts = new();
+    private readonly InMemoryGroupMemberRepository _members;
+
+    public InMemoryContractRepository(InMemoryGroupMemberRepository members)
+    {
+        _members = members;
+    }
+
+    public ConcurrentBag<PointsLedgerEntry> Ledger { get; } = new();
+
+    public Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListForGroupAsync(
+        ObjectId groupId,
+        ContractListFilter filter,
+        int limit,
+        ObjectId? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _contracts.Values.Where(x => x.GroupId == groupId);
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            query = query.Where(x => x.Status == filter.Status);
+        }
+
+        if (filter.Mine.HasValue)
+        {
+            var me = filter.Mine.Value;
+            query = query.Where(x => x.ChallengerId == me || x.TargetId == me || x.AcceptedBy == me);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Game))
+        {
+            query = query.Where(x => string.Equals(x.Game, filter.Game, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Query))
+        {
+            var q = filter.Query;
+            query = query.Where(x => x.Condition.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || x.Reward.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || x.Game.Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (cursor.HasValue)
+        {
+            query = query.Where(x => x.Id < cursor.Value);
+        }
+
+        var items = query.OrderByDescending(x => x.Id).Take(limit + 1).ToList();
+        return Task.FromResult<(IReadOnlyList<Contract>, bool)>((items.Take(limit).ToList(), items.Count > limit));
+    }
+
+    public async Task<AcceptContractResult> AcceptWithBondAsync(
+        ObjectId contractId,
+        int expectedVersion,
+        ObjectId userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        if (!_contracts.TryGetValue(contractId, out var contract))
+        {
+            return new AcceptContractResult(AcceptContractOutcome.StateChanged, null, 0);
+        }
+
+        var member = await _members.GetAsync(contract.GroupId, userId, cancellationToken);
+        lock (_contracts)
+        {
+            if (contract.Status != "open" || contract.Version != expectedVersion)
+            {
+                return new AcceptContractResult(AcceptContractOutcome.StateChanged, null, 0);
+            }
+
+            if (member is null || member.PointsBalance < contract.BondRequired)
+            {
+                return new AcceptContractResult(AcceptContractOutcome.InsufficientPoints, null, 0);
+            }
+
+            member.PointsBalance -= contract.BondRequired;
+            contract.Status = "in_progress";
+            contract.AcceptedBy = userId;
+            contract.AcceptedAt = now;
+            contract.UpdatedAt = now;
+            contract.Version++;
+            Ledger.Add(new PointsLedgerEntry
+            {
+                Id = ObjectId.GenerateNewId(),
+                GroupId = contract.GroupId,
+                UserId = userId,
+                Type = "bond_lock",
+                Amount = -contract.BondRequired,
+                RefType = "contract",
+                RefId = contract.Id,
+                BalanceAfter = member.PointsBalance,
+                CreatedAt = now
+            });
+            return new AcceptContractResult(AcceptContractOutcome.Accepted, contract, member.PointsBalance);
+        }
+    }
+
+    public Task<Contract?> TryRejectAsync(ObjectId contractId, int expectedVersion, ObjectId userId, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_contracts)
+        {
+            if (!_contracts.TryGetValue(contractId, out var contract) || contract.Status != "open" || contract.Version != expectedVersion)
+            {
+                return Task.FromResult<Contract?>(null);
+            }
+
+            contract.Status = "cancelled";
+            contract.RejectedBy = userId;
+            contract.ClosedReason = "rejected";
+            contract.UpdatedAt = now;
+            contract.Version++;
+            return Task.FromResult<Contract?>(contract);
+        }
+    }
 
     public Task CreateAsync(Contract contract, CancellationToken cancellationToken)
     {

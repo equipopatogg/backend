@@ -26,6 +26,49 @@ public static class ContractEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapGet("/{id}", async (
+                string id,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GetAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("GetContract")
+            .Produces<ContractResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id}/accept", async (
+                string id,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            {
+                var request = await ReadOptionalActionAsync(context.Request, cancellationToken);
+                return ApiResults.Ok(await service.AcceptAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken));
+            })
+            .RequireAuthorization()
+            .WithName("AcceptContract")
+            .Produces<ContractResponse>()
+            .ProducesProblem(StatusCodes.Status402PaymentRequired)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{id}/reject", async (
+                string id,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            {
+                var request = await ReadOptionalActionAsync(context.Request, cancellationToken);
+                return ApiResults.Ok(await service.RejectAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken));
+            })
+            .RequireAuthorization()
+            .WithName("RejectContract")
+            .Produces<ContractResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         var nested = app.MapGroup("/api/v1/groups/{gid}/contracts").WithTags("Contracts");
         nested.MapPost("", async (
                 string gid,
@@ -51,6 +94,52 @@ public static class ContractEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        nested.MapGet("", async (
+                string gid,
+                string? status,
+                bool? mine,
+                string? game,
+                string? q,
+                int? limit,
+                string? cursor,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            {
+                var (items, meta) = await service.ListAsync(
+                    context.User.GetRequiredObjectId(),
+                    gid,
+                    status,
+                    mine ?? false,
+                    game,
+                    q,
+                    limit ?? 20,
+                    cursor,
+                    cancellationToken);
+                return ApiResults.Ok(items, meta);
+            })
+            .RequireAuthorization()
+            .WithName("ListGroupContracts")
+            .Produces<IReadOnlyList<ContractResponse>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         return app;
+    }
+
+    /// <summary>El cuerpo de accept/reject es opcional ({"version": n}); sin cuerpo se acepta la versión actual.</summary>
+    private static async Task<ContractActionRequest?> ReadOptionalActionAsync(HttpRequest request, CancellationToken cancellationToken)
+    {
+        if (request.ContentLength == 0 || !request.HasJsonContentType())
+        {
+            if (request.ContentLength is > 0)
+            {
+                throw ApiException.BadRequest(ErrorCodes.InvalidInput, "El cuerpo debe ser JSON.");
+            }
+
+            return null;
+        }
+
+        return await request.ReadFromJsonAsync<ContractActionRequest>(cancellationToken);
     }
 }

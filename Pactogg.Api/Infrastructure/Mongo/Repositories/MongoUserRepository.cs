@@ -27,6 +27,16 @@ public sealed class MongoUserRepository : IUserRepository
         await _context.Users.Find(x => x.NicknameLower == nicknameLower && x.DeletedAt == null)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken)
+    {
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        return await _context.Users.Find(Builders<User>.Filter.In(x => x.Id, ids)).ToListAsync(cancellationToken);
+    }
+
     public async Task CreateAsync(User user, CancellationToken cancellationToken)
     {
         try
@@ -49,4 +59,42 @@ public sealed class MongoUserRepository : IUserRepository
             x => x.Id == id,
             Builders<User>.Update.Set(x => x.LastLoginAt, at).Set(x => x.UpdatedAt, at),
             cancellationToken: cancellationToken);
+
+    public async Task<User?> UpdateProfileAsync(
+        ObjectId id,
+        string? nickname,
+        string? avatarId,
+        DateTime at,
+        CancellationToken cancellationToken)
+    {
+        var update = Builders<User>.Update.Set(x => x.UpdatedAt, at);
+        if (nickname is not null)
+        {
+            update = update
+                .Set(x => x.Nickname, nickname)
+                .Set(x => x.NicknameLower, nickname.ToLowerInvariant());
+        }
+
+        if (avatarId is not null)
+        {
+            update = update.Set(x => x.AvatarId, avatarId);
+        }
+
+        try
+        {
+            return await _context.Users.FindOneAndUpdateAsync(
+                Builders<User>.Filter.Where(x => x.Id == id && x.DeletedAt == null),
+                update,
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+        }
+        catch (MongoCommandException ex) when (ex.Code == 11000)
+        {
+            throw ApiException.Conflict(ErrorCodes.NicknameAlreadyExists, "El apodo ya está en uso.");
+        }
+        catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        {
+            throw ApiException.Conflict(ErrorCodes.NicknameAlreadyExists, "El apodo ya está en uso.");
+        }
+    }
 }

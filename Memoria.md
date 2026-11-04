@@ -156,6 +156,12 @@
 | F2-D22 | Moderación de imágenes para videojuegos: armas permitidas; violencia gráfica permitida solo en capturas `Animated`; explícito, odio, perturbador y autolesión siempre bloqueados; confianza 80 % | CLARIFICACION #63 y uso real (capturas de shooters) | Aprobada |
 | F2-D21 | `target_type` `group|member`; retarse a sí mismo devuelve 422 `INVALID_TARGET` | CLARIFICACION #32, #73 (resuelve Q-018) | Aprobada |
 | F2-D19 | Despliegue de costo cero: 2 EC2 t3.micro, Caddy como balanceador + Let's Encrypt (`sslip.io`), Redis en contenedor, S3 + CloudFront para imágenes, CloudWatch Logs; sin NAT/ALB/ElastiCache | Requisitos del docente v3: "configurado con costo cero", 2 instancias, LB o similar, SSL, CDN | Aprobada |
+| F2-D23 | Aceptar un reto (CON-06) es una transacción MongoDB: `open→in_progress` con versión, descuento de fianza solo si alcanza y `bond_lock` en `points_ledger`; 402 `INSUFFICIENT_POINTS` | Constitución §6.3/§6.6 y CLARIFICACION (fianza al aceptar, saldo nunca negativo, libro inmutable) | Aprobada |
+| F2-D24 | Rechazar (CON-07) deja el reto en `cancelled` con `closed_reason=rejected`; no hay estado `rejected` | Máquina de estados de la Constitución §6.3 (`open→cancelled`) | Aprobada |
+| F2-D25 | Caché por versiones: llaves con versión por usuario y por grupo; invalidar = cambiar versión. Perfil 60 s, mis grupos 60 s, miembros 60 s, tablero 30 s; detalle de grupo y de reto sin caché para que saldo y estado sean exactos | CRUD (cachés por endpoint) y Redis de costo cero | Aprobada |
+| F2-D26 | Unirse: máximo 20 miembros por grupo (`Auth:MaxMembersPerGroup`) con incremento atómico; 409 `ALREADY_MEMBER`/`GROUP_FULL`/`GROUP_LIMIT_REACHED`; 10 intentos cada 10 min | Constitución §6.2 y CRUD MEM-01 | Aprobada |
+| F2-D27 | `check-nickname` público con 3–24 caracteres (igual que el registro, D-15) y 20 consultas/min por IP; el Excel decía 3–20 | Coherencia con USR-01 | Aprobada |
+| F2-D28 | El retador no puede aceptar su propio reto: 409 `CANNOT_ACCEPT_OWN_CONTRACT` | CRUD CON-06 ("no puede aceptar su propio reto", respuestas 200/402/409) | Aprobada |
 
 ### 2.1 Registro de aprobación de la Fase 2
 
@@ -209,6 +215,8 @@ Las preguntas Q-007, Q-012 y Q-019 a Q-021 siguen abiertas; no bloquean los siet
 | 5 | `POST /api/v1/contracts` | CON-01 | Implementado y probado localmente |
 | 6 | `POST /api/v1/contracts/{id}/evidence` | EVI-02 | Implementado y probado localmente |
 | 7 | `GET /api/v1/tournaments` | TOR-02/TOR-03 | Implementado y probado localmente |
+
+**Endpoints sociales (v0.5.0, 2026-11-04):** USR-02 `GET /users/me`, USR-03 `PATCH /users/me`, USR-06 `GET /users/check-nickname`, GRP-02 `GET /groups`, GRP-03 `GET /groups/{id}`, MEM-01 `POST /groups/join`, MEM-02 `GET /groups/{id}/members`, CON-02 `GET /groups/{gid}/contracts`, CON-03 `GET /contracts/{id}`, CON-06 `POST /contracts/{id}/accept`, CON-07 `POST /contracts/{id}/reject`. Implementados con expediente en `specs/`, OpenAPI y pruebas (`IntegrationTest/SocialFlowTests.cs`, `SecurityTest`); 31 pruebas de integración/seguridad/contrato en verde. Nueva colección `points_ledger` con índices `ux_points_ledger_ref_type_user` e `ix_points_ledger_user_group_date`.
 
 La implementación local está completa, con pruebas verdes, Atlas conectado e imagen Docker construida. El despliegue en AWS con HTTPS sigue pendiente de permisos de despliegue, dominio y ejecución de Terraform.
 
@@ -327,6 +335,7 @@ cd deploy/terraform && terraform fmt -check -recursive && terraform validate
 | 2026-10-30 | 0.1.1 | Verificación de restore, build, API y auditoría de dependencias; paquetes endurecidos sin CVEs altas | Agente OpenCode |
 | 2026-11-02 | 0.2.0 | Fase 2: siete endpoints, auth/grupos/contratos/evidencias/torneos, moderación, S3, OpenAPI, Docker/Terraform y 42 pruebas en verde | Agente OpenCode |
 | 2026-11-02 | 0.3.0 | Terraform AWS completo en `deploy/terraform`, pipeline `backend-ci-cd.yml`, pruebas funcionales en los 7 proyectos y moderación antes de S3; 49 pruebas en verde y 1 omitida | Agente OpenCode |
+| 2026-11-04 | 0.5.0 | 11 endpoints: perfil (ver/editar/apodo libre), mis grupos, detalle, unirse con código, miembros, tablero de retos, detalle de reto, aceptar con fianza transaccional y `points_ledger`, rechazar; caché por versiones; decisiones F2-D23 a F2-D28 | Claude / PO David |
 | 2026-11-04 | 0.4.2 | Política de moderación de imágenes para videojuegos (F2-D22) con pruebas unitarias; configurable en `Moderation:Image` | Claude / PO David |
 | 2026-11-04 | 0.4.1 | Q-017 y Q-018 resueltas con CLARIFICACION: `voting` con la primera evidencia y auto-reto prohibido; specs, OpenAPI y pruebas actualizadas; documentación alineada a costo cero | Claude / PO David |
 | 2026-11-04 | 0.4.0 | Infraestructura de costo cero (F2-D19): 2 EC2 + Caddy LB/TLS + Redis en contenedor + CDN CloudFront para S3; redespliegue por SSM en script y pipeline | Claude / PO David |

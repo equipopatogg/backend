@@ -28,7 +28,15 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
                      "/api/v1/groups:",
                      "/api/v1/contracts:",
                      "/api/v1/contracts/{id}/evidence",
-                     "/api/v1/tournaments:"
+                     "/api/v1/tournaments:",
+                     "/api/v1/users/me:",
+                     "/api/v1/users/check-nickname:",
+                     "/api/v1/groups/join:",
+                     "/api/v1/groups/{id}:",
+                     "/api/v1/groups/{id}/members:",
+                     "/api/v1/contracts/{id}:",
+                     "/api/v1/contracts/{id}/accept:",
+                     "/api/v1/contracts/{id}/reject:"
                  })
         {
             text.Should().Contain(path);
@@ -53,5 +61,8 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
         paths.TryGetProperty("/api/v1/contracts", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/contracts/{id}/evidence", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/tournaments", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/users/me", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/groups/join", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/contracts/{id}/accept", out _).Should().BeTrue();
     }
 }

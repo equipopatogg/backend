@@ -4,6 +4,7 @@ using Pactogg.Api.Common;
 using Pactogg.Api.Infrastructure.Audit;
 using Pactogg.Api.Infrastructure.Moderation;
 using Pactogg.Api.Infrastructure.Options;
+using Pactogg.Api.Infrastructure.Redis;
 using Pactogg.Api.Infrastructure.Storage;
 using Pactogg.Api.Modules.Contracts.Abstractions;
 using Pactogg.Api.Modules.Contracts.Domain;
@@ -43,6 +44,7 @@ public sealed class EvidenceService
     private readonly IObjectStorage _storage;
     private readonly IAuditService _audit;
     private readonly EvidenceOptions _options;
+    private readonly ICacheService _cache;
 
     public EvidenceService(
         IContractRepository contracts,
@@ -51,8 +53,10 @@ public sealed class EvidenceService
         IModerationService moderation,
         IObjectStorage storage,
         IAuditService audit,
-        IOptions<EvidenceOptions> options)
+        IOptions<EvidenceOptions> options,
+        ICacheService cache)
     {
+        _cache = cache;
         _contracts = contracts;
         _evidence = evidence;
         _members = members;
@@ -103,6 +107,7 @@ public sealed class EvidenceService
 
         await ReserveAndCreateAsync(contract, evidence, cancellationToken);
         await _audit.AppendAsync("evidence.created", userId, "evidence", evidence.Id, contract.GroupId, new { contract_id = contract.Id.ToString(), type = "link" }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
         return ToResponse(evidence);
     }
 
@@ -173,6 +178,7 @@ public sealed class EvidenceService
         }
 
         await _audit.AppendAsync("evidence.created", userId, "evidence", evidence.Id, contract.GroupId, new { contract_id = contract.Id.ToString(), type = "photo" }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
         return ToResponse(evidence);
     }
 

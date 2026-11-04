@@ -5,6 +5,7 @@ using Pactogg.Api.Modules.Auth.Domain;
 using Pactogg.Api.Modules.Contracts.Domain;
 using Pactogg.Api.Modules.Evidence.Domain;
 using Pactogg.Api.Modules.Groups.Domain;
+using Pactogg.Api.Modules.Points.Domain;
 using Pactogg.Api.Modules.Tournaments.Domain;
 using Pactogg.Api.Infrastructure.Audit;
 
@@ -36,5 +37,6 @@ public sealed class MongoContext
     public IMongoCollection<Evidence> Evidences => Database.GetCollection<Evidence>("evidence");
     public IMongoCollection<Tournament> Tournaments => Database.GetCollection<Tournament>("tournaments");
     public IMongoCollection<Match> Matches => Database.GetCollection<Match>("matches");
+    public IMongoCollection<PointsLedgerEntry> PointsLedger => Database.GetCollection<PointsLedgerEntry>("points_ledger");
     public IMongoCollection<AuditEvent> AuditEvents => Database.GetCollection<AuditEvent>("audit_events");
 }
