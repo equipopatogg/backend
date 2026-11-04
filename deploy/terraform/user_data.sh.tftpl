@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# Arranque de la instancia "${role}" de PactoGG.
+#   gateway: Redis compartido + API + Caddy (TLS Let's Encrypt y balanceo a ambas APIs)
+#   worker : API
+set -euo pipefail
+exec > >(tee -a /var/log/pactogg-bootstrap.log | logger -t pactogg-bootstrap) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Sin NAT: la salida a internet depende de la Elastic IP, que Terraform asocia
+# justo después de crear la instancia. Esperar a que esté asociada.
+EXPECTED_IP="${expected_public_ip}"
+for _ in $(seq 1 60); do
+  TOKEN="$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)"
+  CURRENT_IP="$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
+  [ "$CURRENT_IP" = "$EXPECTED_IP" ] && break
+  sleep 5
+done
+echo "IP pública: $${CURRENT_IP:-ninguna} (esperada $EXPECTED_IP)"
+
+# t3.micro tiene 1 GB de RAM: swap de 1 GB para builds/picos.
+if [ ! -f /swapfile ]; then
+  fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+apt-get update -y
+apt-get install -y ca-certificates curl unzip docker.io
+systemctl enable --now docker
+
+if ! command -v aws >/dev/null 2>&1; then
+  curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+fi
+
+REGION="${aws_region}"
+PARAM_PREFIX="${ssm_prefix}"
+ROLE="${role}"
+
+get_parameter() {
+  aws ssm get-parameter --region "$REGION" --name "$PARAM_PREFIX/$1" \
+    --with-decryption --query 'Parameter.Value' --output text
+}
+
+install -d -m 0700 /opt/pactogg
+umask 077
+
+# ---------------------------------------------------------------------------
+# Script de (re)despliegue: lo usa el arranque y luego SSM / GitHub Actions.
+cat > /opt/pactogg/redeploy.sh <<'REDEPLOY'
+#!/usr/bin/env bash
+set -euo pipefail
+REGION="${aws_region}"
+PARAM_PREFIX="${ssm_prefix}"
+ECR_REGISTRY="${ecr_registry}"
+IMAGE_URI="${image_uri}"
+LOG_GROUP="${log_group}"
+
+get_parameter() {
+  aws ssm get-parameter --region "$REGION" --name "$PARAM_PREFIX/$1" \
+    --with-decryption --query 'Parameter.Value' --output text
+}
+
+umask 077
+cat > /opt/pactogg/api.env <<ENVFILE
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=http://+:8080
+ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+MongoDb__ConnectionString=$(get_parameter MongoDb__ConnectionString)
+MongoDb__DatabaseName=pactogg
+Redis__ConnectionString=$(get_parameter Redis__ConnectionString)
+Jwt__SigningKey=$(get_parameter Jwt__SigningKey)
+Jwt__Issuer=${jwt_issuer}
+Jwt__Audience=${jwt_audience}
+Jwt__AccessTokenMinutes=${jwt_access_minutes}
+Jwt__RefreshTokenDays=${jwt_refresh_days}
+Auth__CurrentPrivacyVersion=${privacy_version}
+Moderation__Mode=Aws
+Aws__Region=$REGION
+Aws__BucketName=${s3_bucket_name}
+Aws__CdnBaseUrl=${cdn_base_url}
+%{ for index, origin in cors_allowed_origins ~}
+Cors__AllowedOrigins__${index}=${origin}
+%{ endfor ~}
+ENVFILE
+chmod 600 /opt/pactogg/api.env
+
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+for _ in $(seq 1 30); do
+  docker pull "$IMAGE_URI" && break
+  sleep 20
+done
+docker image inspect "$IMAGE_URI" >/dev/null
+
+docker rm -f pactogg-api >/dev/null 2>&1 || true
+docker run -d \
+  --name pactogg-api \
+  --restart unless-stopped \
+  --env-file /opt/pactogg/api.env \
+  --memory 600m \
+  --log-driver awslogs \
+  --log-opt awslogs-region="$REGION" \
+  --log-opt awslogs-group="$LOG_GROUP" \
+  --log-opt awslogs-stream="api-$(hostname)" \
+  -p 8080:8080 \
+  "$IMAGE_URI"
+
+for _ in $(seq 1 30); do
+  curl -fsS http://127.0.0.1:8080/health >/dev/null && { echo "API sana"; exit 0; }
+  sleep 5
+done
+echo "La API no respondió /health" >&2
+exit 1
+REDEPLOY
+chmod 700 /opt/pactogg/redeploy.sh
+
+# ---------------------------------------------------------------------------
+if [ "$ROLE" = "gateway" ]; then
+  REDIS_PASSWORD="$(get_parameter Redis__Password)"
+  docker rm -f pactogg-redis >/dev/null 2>&1 || true
+  docker run -d \
+    --name pactogg-redis \
+    --restart unless-stopped \
+    --memory 128m \
+    -v pactogg-redis:/data \
+    -p ${gateway_private_ip}:6379:6379 \
+    -p 127.0.0.1:6379:6379 \
+    redis:7-alpine \
+    redis-server --appendonly yes --maxmemory 96mb --maxmemory-policy allkeys-lru \
+      --requirepass "$REDIS_PASSWORD"
+  unset REDIS_PASSWORD
+fi
+
+/opt/pactogg/redeploy.sh || echo "Primer despliegue de la API sin /health; revisar CloudWatch." >&2
+
+if [ "$ROLE" = "gateway" ]; then
+  install -d -m 0755 /opt/pactogg/caddy
+  cat > /opt/pactogg/caddy/Caddyfile <<'CADDY'
+{
+	email ${acme_email}
+}
+
+${public_host} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8080 ${worker_private_ip}:8080 {
+		lb_policy round_robin
+		lb_try_duration 5s
+		health_uri /health
+		health_interval 15s
+		health_timeout 5s
+		fail_duration 30s
+		header_up X-Forwarded-Proto https
+	}
+}
+CADDY
+  chmod 644 /opt/pactogg/caddy/Caddyfile
+  docker rm -f pactogg-caddy >/dev/null 2>&1 || true
+  docker run -d \
+    --name pactogg-caddy \
+    --restart unless-stopped \
+    --network host \
+    --memory 128m \
+    -v /opt/pactogg/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
+    -v pactogg-caddy-data:/data \
+    -v pactogg-caddy-config:/config \
+    caddy:2-alpine
+fi
+
+docker ps

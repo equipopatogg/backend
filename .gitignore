@@ -1,0 +1,54 @@
+# Build
+bin/
+obj/
+artifacts/
+TestResults/
+coverage/
+coverage.*.xml
+*.coverage
+*.coveragexml
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local configuration and secrets
+appsettings.*.local.json
+appsettings.Local.json
+.env
+.env.*
+!**/.env.example
+*.pfx
+*.p12
+secrets.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+*.tfvars
+!*.tfvars.example
+!terraform.tfvars.example
+crash.log
+
+# Reports and tooling
+StrykerOutput/
+reports/
+perf-reports/
+pacts/
+*.trx
+*.lcov
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sesiones de agentes (pueden contener secretos)
+session-*.md

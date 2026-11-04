@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.Core/Stryker.Core/Reporters/Json/JsonReportSchema.json",
+  "stryker-config": {
+    "project": "Pactogg.Api.csproj",
+    "test-projects": [
+      "../UnitTest/UnitTest.csproj",
+      "../IntegrationTest/IntegrationTest.csproj",
+      "../SecurityTest/SecurityTest.csproj",
+      "../MutationTest/MutationTest.csproj"
+    ],
+    "mutate": [
+      "Modules/**/*.cs",
+      "Common/**/*.cs",
+      "Infrastructure/**/*.cs",
+      "!**/obj/**",
+      "!**/bin/**"
+    ],
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 60
+    },
+    "reporters": [
+      "progress",
+      "html",
+      "json"
+    ],
+    "output": "../StrykerOutput"
+  }
+}

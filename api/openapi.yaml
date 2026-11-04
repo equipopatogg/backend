@@ -1,0 +1,569 @@
+openapi: 3.0.3
+info:
+  title: PactoGG API
+  version: 1.0.0
+  description: Contrato de los endpoints obligatorios de la evaluación.
+servers:
+  - url: https://pactogg.example.com
+    description: Producción (HTTPS)
+  - url: http://localhost:5080
+    description: Desarrollo local
+tags:
+  - name: Auth
+  - name: Groups
+  - name: Contracts
+  - name: Evidence
+  - name: Tournaments
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Registrar cuenta
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Cuenta creada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Session' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Sesión creada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Renovar la sesión (AUTH-03)
+      description: >-
+        Entrega un access token nuevo y ROTA el refresh token (el anterior queda revocado).
+        La app lo llama en silencio antes de que venza el access token (15 min) para mantener la sesión viva.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: Sesión renovada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Cerrar sesión individual o global
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '204': { description: Sesión cerrada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/groups:
+    post:
+      tags: [Groups]
+      operationId: createGroup
+      summary: Crear grupo
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGroupRequest' }
+      responses:
+        '201':
+          description: Grupo creado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Group' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/contracts:
+    post:
+      tags: [Contracts]
+      operationId: createContract
+      summary: Crear contrato en un grupo
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateContractRequest' }
+      responses:
+        '201':
+          description: Contrato creado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Contract' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/groups/{gid}/contracts:
+    post:
+      tags: [Contracts]
+      operationId: createGroupContract
+      summary: Crear contrato usando el grupo de la ruta
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateContractRequest' }
+      responses:
+        '201':
+          description: Contrato creado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Contract' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/contracts/{id}/evidence:
+    post:
+      tags: [Evidence]
+      operationId: createEvidence
+      summary: Agregar evidencia por enlace o foto
+      description: >-
+        La primera evidencia aprobada pasa el contrato a voting (CLARIFICACION #30).
+        Se admiten hasta 3 evidencias por contrato (#60); la cuarta devuelve 409 EVIDENCE_LIMIT_REACHED.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLinkEvidenceRequest' }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                type:
+                  type: string
+                  enum: [photo]
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Evidencia moderada y almacenada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Evidence' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/tournaments:
+    get:
+      tags: [Tournaments]
+      operationId: listTournaments
+      summary: Listar torneos de los grupos activos del usuario
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/Game'
+        - $ref: '#/components/parameters/GroupQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Tournament' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/groups/{gid}/tournaments:
+    get:
+      tags: [Tournaments]
+      operationId: listGroupTournaments
+      summary: Listar torneos de un grupo
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/Game'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Tournament' }
+                      meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    GroupId:
+      name: gid
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+    ContractId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+    GroupQuery:
+      name: group_id
+      in: query
+      required: false
+      schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+    Status:
+      name: status
+      in: query
+      required: false
+      schema: { type: string, enum: [open, in_progress, finished, cancelled] }
+    Game:
+      name: game
+      in: query
+      required: false
+      schema: { type: string, maxLength: 60 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+  responses:
+    Unauthorized:
+      description: Autenticación requerida o token inválido/revocado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Sin pertenencia o propiedad sobre el recurso
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Recurso inexistente
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Conflicto de estado o unicidad
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Datos inválidos o contenido rechazado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Límite de solicitudes excedido
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServiceUnavailable:
+      description: Moderación o almacenamiento no disponible (falla cerrada)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Envelope:
+      type: object
+      required: [data]
+      properties:
+        data: {}
+        meta:
+          type: object
+          nullable: true
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        request_id: { type: string }
+        details:
+          type: object
+          nullable: true
+    PageMeta:
+      type: object
+      properties:
+        next_cursor: { type: string, nullable: true }
+        has_more: { type: boolean }
+    RegisterRequest:
+      type: object
+      required: [email, password, nickname, accept_privacy, privacy_version]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 12, maxLength: 128 }
+        nickname: { type: string, pattern: '^[A-Za-z0-9_.-]{3,24}$' }
+        accept_privacy: { type: boolean }
+        privacy_version: { type: string, minLength: 1, maxLength: 32 }
+        device_id: { type: string, maxLength: 128, nullable: true }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 128 }
+        device_id: { type: string, maxLength: 128, nullable: true }
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      additionalProperties: false
+      properties:
+        refresh_token: { type: string }
+        device_id: { type: string, maxLength: 128, nullable: true }
+    LogoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        refresh_token: { type: string, nullable: true }
+        all: { type: boolean, default: false }
+    Session:
+      type: object
+      required: [user, access_token, refresh_token, token_type, expires_in]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer, example: 900 }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        nickname: { type: string }
+        email_verified: { type: boolean }
+        created_at: { type: string, format: date-time }
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 2, maxLength: 40 }
+        settings: { $ref: '#/components/schemas/GroupSettings' }
+    GroupSettings:
+      type: object
+      additionalProperties: false
+      properties:
+        jurors: { type: integer, minimum: 1, maximum: 9, default: 3 }
+        consensus: { type: number, minimum: 0.51, maximum: 1, default: 0.66 }
+        bond_options:
+          type: array
+          items: { type: integer, minimum: 0 }
+    Group:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        owner_id: { type: string }
+        invite_code: { type: string, minLength: 6, maxLength: 6 }
+        invite_active: { type: boolean }
+        member_count: { type: integer }
+        settings: { $ref: '#/components/schemas/GroupSettings' }
+        my_role: { type: string }
+        my_points: { type: integer }
+        created_at: { type: string, format: date-time }
+    CreateContractRequest:
+      type: object
+      required: [game, condition, reward, deadline, bond_required]
+      additionalProperties: false
+      properties:
+        group_id: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        game: { type: string, minLength: 1, maxLength: 60 }
+        condition: { type: string, minLength: 1, maxLength: 280 }
+        reward: { type: string, minLength: 3, maxLength: 80, description: Sin símbolos ni cantidades de dinero }
+        deadline: { type: string, format: date-time }
+        bond_required: { type: integer, minimum: 0 }
+        target_type:
+          type: string
+          enum: [group, member]
+          default: group
+          description: member exige target_id de otro miembro del grupo; retarse a sí mismo devuelve 422 INVALID_TARGET.
+        target_id: { type: string, nullable: true }
+        source: { type: string, enum: [manual], default: manual }
+    Contract:
+      type: object
+      properties:
+        id: { type: string }
+        group_id: { type: string }
+        challenger_id: { type: string }
+        target_type: { type: string }
+        target_id: { type: string, nullable: true }
+        game: { type: string }
+        condition: { type: string }
+        reward: { type: string }
+        deadline: { type: string, format: date-time }
+        bond_required: { type: integer }
+        status: { type: string }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+    CreateLinkEvidenceRequest:
+      type: object
+      required: [type, url]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [link] }
+        url: { type: string, format: uri, minLength: 8, maxLength: 2048 }
+    Moderation:
+      type: object
+      properties:
+        status: { type: string, enum: [approved, rejected] }
+        labels:
+          type: array
+          items: { type: string }
+        moderated_at: { type: string, format: date-time, nullable: true }
+    Evidence:
+      type: object
+      properties:
+        id: { type: string }
+        contract_id: { type: string }
+        user_id: { type: string }
+        type: { type: string, enum: [link, photo] }
+        url: { type: string, nullable: true }
+        provider: { type: string, nullable: true }
+        object_key: { type: string, nullable: true }
+        moderation: { $ref: '#/components/schemas/Moderation' }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time, nullable: true }
+    Tournament:
+      type: object
+      properties:
+        id: { type: string }
+        group_id: { type: string }
+        game: { type: string }
+        format: { type: string }
+        entry_points: { type: integer }
+        prize_pool: { type: integer }
+        scheduled_at: { type: string, format: date-time }
+        participants:
+          type: array
+          items: { type: string }
+        status: { type: string }
+        winner_group_id: { type: string, nullable: true }
+        bracket: { $ref: '#/components/schemas/Bracket' }
+    Bracket:
+      type: object
+      properties:
+        matches:
+          type: array
+          items: { $ref: '#/components/schemas/Match' }
+    Match:
+      type: object
+      properties:
+        id: { type: string }
+        round: { type: integer }
+        position: { type: integer }
+        p1_group_id: { type: string, nullable: true }
+        p2_group_id: { type: string, nullable: true }
+        p1_score: { type: integer, nullable: true }
+        p2_score: { type: integer, nullable: true }
+        winner_group_id: { type: string, nullable: true }
+        status: { type: string }

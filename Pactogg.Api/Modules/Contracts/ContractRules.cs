@@ -1,0 +1,26 @@
+using System.Text.RegularExpressions;
+using Pactogg.Api.Common;
+
+namespace Pactogg.Api.Modules.Contracts;
+
+public static partial class ContractRules
+{
+    [GeneratedRegex(@"(?i)(\b(?:mxn|usd|eur(?:os?)?|pesos?|d[oó]lar(?:es)?)\b|[$€£¥])")]
+    private static partial Regex MoneyPattern();
+
+    public static string NormalizeReward(string reward)
+    {
+        var value = reward.Trim();
+        if (value.Length is < 3 or > 80)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "La recompensa debe tener entre 3 y 80 caracteres.");
+        }
+
+        if (MoneyPattern().IsMatch(value))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "La recompensa no puede incluir dinero ni símbolos monetarios.");
+        }
+
+        return value;
+    }
+}

@@ -1,0 +1,17 @@
+aws_region     = "us-east-1"
+project_name   = "pactogg"
+environment    = "prod"
+instance_type  = "t3.micro"
+# Vacío => HTTPS gratis con <ip-con-guiones>.sslip.io + Let's Encrypt.
+# Con dominio propio, crea un registro A hacia la output gateway_public_ip.
+domain_name    = ""
+s3_bucket_name = "pactogg-evidence-private-example"
+
+mongo_connection_string = "mongodb+srv://USER:PASSWORD@cluster.example.mongodb.net/?retryWrites=true&w=majority"
+jwt_signing_key         = "replace-with-at-least-32-random-bytes"
+
+github_repo        = "equipopatogg/backend"
+github_branch      = "main"
+github_environment = "production"
+
+# cors_allowed_origins = ["https://app.pactogg.example.com"]
