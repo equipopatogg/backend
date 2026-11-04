@@ -40,8 +40,10 @@ resource "aws_cloudfront_distribution" "evidence" {
   }
 
   viewer_certificate {
+    # Con el certificado *.cloudfront.net AWS fija TLSv1 y no admite otro valor;
+    # declararlo así evita un cambio perpetuo en cada plan.
     cloudfront_default_certificate = true
-    minimum_protocol_version       = "TLSv1.2_2021"
+    minimum_protocol_version       = "TLSv1"
   }
 
   tags = { Name = "${local.name_prefix}-cdn" }

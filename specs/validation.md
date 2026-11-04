@@ -9,13 +9,13 @@
 |---|---|---|
 | Build Release | PASS | 0 errores, 0 advertencias |
 | UnitTest | PASS | 26 pruebas |
-| IntegrationTest | PASS | 11 pruebas |
+| IntegrationTest | PASS | 13 pruebas |
 | SecurityTest | PASS | 6 pruebas |
 | ContractTest | PASS | 3 pruebas |
 | DatabaseTest | PASS local / 1 omitida | Testcontainers omitido: integración WSL de Docker no habilitada |
 | MutationTest | PASS | 1 prueba de flujo |
 | PerformanceTest | PASS | 1 prueba de flujo |
-| Total | 49 verdes, 1 omitida | Suites locales |
+| Total | 51 verdes, 1 omitida | Suites locales (2026-11-04) |
 | SCA | PASS | Sin paquetes vulnerables en 8 proyectos |
 | Terraform fmt/validate | PASS | `scripts/deploy-first-time.sh` 2026-11-04 |
 | YAML/shell/JSON | PASS | Workflow, scripts y Stryker |
@@ -27,7 +27,7 @@
 | Atlas real | PASS | Registro, login y creación de grupo persistidos en Atlas desde AWS |
 | Smoke público | PASS | `https://52-3-200-211.sslip.io/health` → 200 `Healthy` (TLS Let's Encrypt vía Caddy) |
 | E2E público | PASS | USR-01 201, AUTH-01 200, GRP-01 201, TOR-02 200, AUTH-04 204 contra la URL pública |
-| Cambios F2-D20/F2-D21 | PENDIENTE | `voting` con la primera evidencia y auto-reto 422: código y pruebas escritos; falta `dotnet test` y redespliegue |
+| Cambios F2-D20/F2-D21 | PASS | Pruebas `Evidence_FirstEvidenceMovesContractToVoting` y `Contract_TargetingYourself_Returns422` en verde; publicado como imagen `20261104020753` vía `scripts/release.sh` (SSM en ambas instancias) |
 
 ## Configuración local de MongoDB
 
