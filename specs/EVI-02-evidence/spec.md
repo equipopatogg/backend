@@ -89,6 +89,7 @@ Foto: `multipart/form-data` con `file` y `type=photo` opcional. Hosts permitidos
 - **EVI02-D2:** enlaces no se descargan ni se suben a S3 (D-18).
 - **EVI02-D3:** transición a `voting` con la primera evidencia aprobada (Q-017 resuelta, F2-D20). Cuando exista VOT-02, el primer voto bloqueará nuevas evidencias.
 - **EVI02-D4:** moderación antes de S3; fallo cerrado.
+- **EVI02-D5 (F2-D22):** política de imágenes para videojuegos con Rekognition (`ImageModerationPolicy`, configurable en `Moderation:Image`). Confianza mínima 80 % (CLARIFICACION #63). Siempre se bloquea Explicit, Hate Symbols, Visually Disturbing y Self-Harm. `Graphic Violence` (sangre, explosiones) se bloquea en fotos reales y se permite si Rekognition marca el contenido como `Animated`/`Illustrated` (captura de juego) con confianza ≥ 70 %. `Weapons` y las demás categorías se permiten.
 
 ## 6. Criterios de aceptación
 
@@ -103,7 +104,7 @@ Foto: `multipart/form-data` con `file` y `type=photo` opcional. Hosts permitidos
 
 ## 7. Plan de pruebas
 
-Enlace válido, URL insegura, imagen inválida, límite de 3, moderación rechazada sin S3 y NoSQL. Faltan pruebas de foto aprobada con S3 real, moderación AWS y transición exacta.
+Enlace válido, URL insegura, imagen inválida, límite de 3, moderación rechazada sin S3 y NoSQL. La política de imágenes tiene pruebas unitarias (`ImageModerationPolicyTests`). Faltan pruebas de foto aprobada con S3 real y Rekognition real.
 
 ## 8. Riesgos y deuda
 

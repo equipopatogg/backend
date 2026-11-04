@@ -20,8 +20,9 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'pactogg-api' }}
-  ASG_NAME: ${{ vars.ASG_NAME }}
+  INSTANCE_IDS: ${{ vars.INSTANCE_IDS }}
   PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+  TRIVY_VERSION: "0.69.3"
 
 jobs:
   build-test:
@@ -87,13 +88,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: csharp
 
-      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/autobuild@v4
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
 
   sca:
     name: sca-dependencies
@@ -124,20 +125,20 @@ jobs:
             exit 1
           fi
 
+      # Trivy por imagen oficial fijada (0.69.3 no afectada por GHSA-69fq-xp46-6x23);
+      # se evita trivy-action/setup-trivy, cuyo instalador falla tras el incidente.
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: sarif
-          output: trivy-fs.sarif
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          ignore-unfixed: true
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work aquasec/trivy:${TRIVY_VERSION} \
+            fs --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed \
+            --format sarif --output /work/trivy-fs.sarif --exit-code 0 .
+          docker run --rm -v "$PWD:/work" -w /work aquasec/trivy:${TRIVY_VERSION} \
+            fs --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed \
+            --format table --exit-code 1 .
 
       - name: Upload Trivy SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-fs.sarif
 
@@ -187,18 +188,17 @@ jobs:
         run: docker build -t "pactogg-api:${GITHUB_SHA}" .
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          image-ref: pactogg-api:${{ github.sha }}
-          format: sarif
-          output: trivy-image.sarif
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          ignore-unfixed: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" -w /work \
+            aquasec/trivy:${TRIVY_VERSION} image --severity CRITICAL,HIGH --ignore-unfixed \
+            --format sarif --output /work/trivy-image.sarif --exit-code 0 "pactogg-api:${GITHUB_SHA}"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:${TRIVY_VERSION} image --severity CRITICAL,HIGH --ignore-unfixed \
+            --format table --exit-code 1 "pactogg-api:${GITHUB_SHA}"
 
       - name: Upload image SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
 
@@ -248,7 +248,7 @@ jobs:
           docker push "${DOCKERHUB_USERNAME}/${ECR_REPOSITORY}:latest"
 
   deploy:
-    name: deploy-ec2-asg
+    name: deploy-ec2-ssm
     needs: docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -265,35 +265,32 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Refresh ASG instances
+      - name: Redeploy both instances via SSM
         shell: bash
         run: |
           set -euo pipefail
-          : "${ASG_NAME:?Define la variable ASG_NAME con el output autoscaling_group_name}"
-          refresh_id="$(aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name "$ASG_NAME" \
-            --strategy Rolling \
-            --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":300}' \
-            --query InstanceRefreshId \
-            --output text)"
-          echo "Instance refresh: ${refresh_id}"
-
-          for _ in $(seq 1 60); do
-            status="$(aws autoscaling describe-instance-refreshes \
-              --auto-scaling-group-name "$ASG_NAME" \
-              --instance-refresh-ids "$refresh_id" \
-              --query 'InstanceRefreshes[0].Status' \
-              --output text)"
-            echo "Estado: ${status}"
-            case "$status" in
-              Successful) exit 0 ;;
-              Failed|Cancelled|RollbackFailed) exit 1 ;;
-            esac
-            sleep 20
+          : "${INSTANCE_IDS:?Define la variable INSTANCE_IDS con el output instance_ids separado por espacios}"
+          # shellcheck disable=SC2086
+          command_id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --comment "pactogg redeploy ${GITHUB_SHA}" \
+            --instance-ids $INSTANCE_IDS \
+            --parameters 'commands=["sudo /opt/pactogg/redeploy.sh"]' \
+            --query Command.CommandId --output text)"
+          echo "SSM command: ${command_id}"
+          for id in $INSTANCE_IDS; do
+            status=Pending
+            for _ in $(seq 1 60); do
+              status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$id" \
+                --query Status --output text 2>/dev/null || echo Pending)"
+              case "$status" in
+                Success) echo "$id: OK"; break ;;
+                Failed|Cancelled|TimedOut) echo "$id: $status" >&2; exit 1 ;;
+              esac
+              sleep 10
+            done
+            [ "$status" = "Success" ] || { echo "$id: timeout" >&2; exit 1; }
           done
-
-          echo "Timeout esperando el instance refresh." >&2
-          exit 1
 
   smoke:
     name: smoke-test
@@ -307,7 +304,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          : "${PUBLIC_BASE_URL:?Define la variable PUBLIC_BASE_URL con https://domain_name}"
+          : "${PUBLIC_BASE_URL:?Define la variable PUBLIC_BASE_URL con el output api_url}"
           base="${PUBLIC_BASE_URL%/}"
           for _ in $(seq 1 30); do
             if curl --fail --silent --show-error --max-time 10 "${base}/health"; then

@@ -13,16 +13,16 @@ public sealed class AwsModerationService : IModerationService
 {
     private readonly IAmazonRekognition _rekognition;
     private readonly IAmazonComprehend _comprehend;
-    private readonly AwsOptions _options;
+    private readonly ImageModerationOptions _imagePolicy;
 
     public AwsModerationService(
         IAmazonRekognition rekognition,
         IAmazonComprehend comprehend,
-        IOptions<AwsOptions> options)
+        IOptions<ModerationOptions> moderationOptions)
     {
         _rekognition = rekognition;
         _comprehend = comprehend;
-        _options = options.Value;
+        _imagePolicy = moderationOptions.Value.Image;
     }
 
     public async Task<ModerationResult> ModerateImageAsync(byte[] image, CancellationToken cancellationToken)
@@ -32,16 +32,19 @@ public sealed class AwsModerationService : IModerationService
             var response = await _rekognition.DetectModerationLabelsAsync(new DetectModerationLabelsRequest
             {
                 Image = new Amazon.Rekognition.Model.Image { Bytes = new MemoryStream(image) },
-                MinConfidence = _options.ModerationConfidenceThreshold
+                // Se pide con umbral bajo y la política filtra; así también llegan los ContentTypes.
+                MinConfidence = Math.Min(_imagePolicy.MinConfidence, _imagePolicy.ContentTypeMinConfidence)
             }, cancellationToken);
 
-            var labels = response.ModerationLabels
-                .Select(label => label.Name.ToString())
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var labels = (response.ModerationLabels ?? [])
+                .Where(label => !string.IsNullOrWhiteSpace(label.Name))
+                .Select(label => new DetectedLabel(label.Name, label.ParentName, label.Confidence ?? 0f));
 
-            return labels.Length == 0 ? ModerationResult.Allow() : ModerationResult.Reject(labels!);
+            var contentTypes = (response.ContentTypes ?? [])
+                .Where(type => !string.IsNullOrWhiteSpace(type.Name))
+                .Select(type => new DetectedContentType(type.Name, type.Confidence ?? 0f));
+
+            return ImageModerationPolicy.Evaluate(labels, contentTypes, _imagePolicy);
         }
         catch (AmazonServiceException)
         {

@@ -62,5 +62,6 @@ Perfil (`/users/me`), unirse con código (`/groups/join`), listar grupos y miemb
 
 - Límite de peticiones: `429 RATE_LIMITED` (reintentar con espera).
 - Los puntos no son dinero: nada de símbolos de moneda en `reward`.
-- La primera evidencia pasa el reto a `voting`; máximo 3 evidencias (`409 EVIDENCE_LIMIT_REACHED`). *(Se activa con el próximo despliegue.)*
-- No puedes retarte a ti mismo: `422 INVALID_TARGET`. *(Se activa con el próximo despliegue.)*
+- La primera evidencia pasa el reto a `voting`; máximo 3 evidencias (`409 EVIDENCE_LIMIT_REACHED`).
+- No puedes retarte a ti mismo: `422 INVALID_TARGET`.
+- Moderación de fotos: se aceptan capturas de juego con armas, sangre o explosiones; se rechazan desnudos, símbolos de odio, contenido perturbador y gore real (`422 CONTENT_REJECTED` con `details.labels`). Muestra un aviso claro y deja elegir otra foto.

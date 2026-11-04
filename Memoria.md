@@ -153,6 +153,7 @@
 | F2-D17 | Swagger solo en Development/Testing | Evitar exposición de la superficie de API en producción | Aprobada |
 | F2-D18 | ~~HTTPS con CloudFront delante del ALB~~ — reemplazada por F2-D19 | PO pidió inventar dominio | Sustituida |
 | F2-D20 | La primera evidencia pasa el contrato a `voting`; hasta 3 evidencias mientras no haya votos | CLARIFICACION #30, #59, #60 (resuelve Q-017) | Aprobada |
+| F2-D22 | Moderación de imágenes para videojuegos: armas permitidas; violencia gráfica permitida solo en capturas `Animated`; explícito, odio, perturbador y autolesión siempre bloqueados; confianza 80 % | CLARIFICACION #63 y uso real (capturas de shooters) | Aprobada |
 | F2-D21 | `target_type` `group|member`; retarse a sí mismo devuelve 422 `INVALID_TARGET` | CLARIFICACION #32, #73 (resuelve Q-018) | Aprobada |
 | F2-D19 | Despliegue de costo cero: 2 EC2 t3.micro, Caddy como balanceador + Let's Encrypt (`sslip.io`), Redis en contenedor, S3 + CloudFront para imágenes, CloudWatch Logs; sin NAT/ALB/ElastiCache | Requisitos del docente v3: "configurado con costo cero", 2 instancias, LB o similar, SSL, CDN | Aprobada |
 
@@ -326,6 +327,7 @@ cd deploy/terraform && terraform fmt -check -recursive && terraform validate
 | 2026-10-30 | 0.1.1 | Verificación de restore, build, API y auditoría de dependencias; paquetes endurecidos sin CVEs altas | Agente OpenCode |
 | 2026-11-02 | 0.2.0 | Fase 2: siete endpoints, auth/grupos/contratos/evidencias/torneos, moderación, S3, OpenAPI, Docker/Terraform y 42 pruebas en verde | Agente OpenCode |
 | 2026-11-02 | 0.3.0 | Terraform AWS completo en `deploy/terraform`, pipeline `backend-ci-cd.yml`, pruebas funcionales en los 7 proyectos y moderación antes de S3; 49 pruebas en verde y 1 omitida | Agente OpenCode |
+| 2026-11-04 | 0.4.2 | Política de moderación de imágenes para videojuegos (F2-D22) con pruebas unitarias; configurable en `Moderation:Image` | Claude / PO David |
 | 2026-11-04 | 0.4.1 | Q-017 y Q-018 resueltas con CLARIFICACION: `voting` con la primera evidencia y auto-reto prohibido; specs, OpenAPI y pruebas actualizadas; documentación alineada a costo cero | Claude / PO David |
 | 2026-11-04 | 0.4.0 | Infraestructura de costo cero (F2-D19): 2 EC2 + Caddy LB/TLS + Redis en contenedor + CDN CloudFront para S3; redespliegue por SSM en script y pipeline | Claude / PO David |
 | 2026-11-03 | 0.3.2 | Modo HTTPS sin dominio: CloudFront delante del ALB (prefix list + cabecera secreta), `domain_name`/`hosted_zone_id` opcionales, salidas `nat_public_ip`/`https_mode` y script `scripts/deploy-first-time.sh` de despliegue completo | Claude / PO David |

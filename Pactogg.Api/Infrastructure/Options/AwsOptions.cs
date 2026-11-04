@@ -7,5 +7,6 @@ public sealed class AwsOptions
     public string Region { get; set; } = "us-east-1";
     public string BucketName { get; set; } = string.Empty;
     public string CloudFrontDomain { get; set; } = string.Empty;
-    public float ModerationConfidenceThreshold { get; set; } = 70f;
+    /// <summary>Obsoleto: la política de imágenes vive en Moderation:Image (F2-D22).</summary>
+    public float ModerationConfidenceThreshold { get; set; } = 80f;
 }
