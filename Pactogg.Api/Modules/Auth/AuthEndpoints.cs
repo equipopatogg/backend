@@ -41,6 +41,24 @@ public static class AuthEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
+        group.MapPost("/google", async (
+                GoogleAuthRequest request,
+                AuthService service,
+                CancellationToken cancellationToken) =>
+            {
+                var (session, created) = await service.GoogleAsync(request, cancellationToken);
+                return created ? ApiResults.Created(session) : ApiResults.Ok(session);
+            })
+            .AllowAnonymous()
+            .AddEndpointFilter<ValidationFilter<GoogleAuthRequest>>()
+            .WithName("GoogleAuth")
+            .Produces<SessionResponse>()
+            .Produces<SessionResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         group.MapPost("/refresh", async (
                 RefreshRequest request,
                 AuthService service,

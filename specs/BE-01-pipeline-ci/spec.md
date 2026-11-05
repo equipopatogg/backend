@@ -1,7 +1,7 @@
 # BE-01 — Pipeline CI/CD, Docker y despliegue AWS
 
 **Fecha:** 2026-11-04
-**Estado:** Implementado localmente; runner/AWS pendientes.
+**Estado:** Implementado y en uso (actualizado 2026-11-04: Semgrep, Dockle, compuerta y `infra.yml`).
 **IDs:** BE-02, BE-21, BE-32
 
 ## 1. Contexto y objetivo
@@ -15,7 +15,11 @@ Automatizar build, pruebas, SAST, SCA, validación Terraform, construcción/esca
 - RF3: `terraform` ejecuta `fmt -check`, `init -backend=false` y `validate`.
 - RF4: `docker` construye, escanea con Trivy y publica en ECR; DockerHub es opcional con secretos.
 - RF5: `deploy` asume rol OIDC y ejecuta `/opt/pactogg/redeploy.sh` en las instancias de `INSTANCE_IDS` vía SSM; espera `Success` en ambas.
-- RF6: `smoke` consulta `PUBLIC_BASE_URL/health`.
+- RF6: `smoke` consulta `PUBLIC_BASE_URL/health` (o descubre la IP del gateway si la variable no existe).
+- RF7: `semgrep` ejecuta SAST con reglas de C#, secretos y OWASP Top 10; falla con severidad ERROR y sube SARIF.
+- RF8: `docker` además ejecuta **Dockle** (CIS Docker Benchmark) y falla con hallazgos FATAL.
+- RF9: `quality-gate` es la compuerta única: pasa solo si `build-test`, `sast`, `semgrep`, `sca` y `terraform` pasaron; `docker` depende de ella.
+- RF10: `infra.yml` (manual, Environment `infra`) crea (`apply`), revisa (`plan`) o elimina (`destroy` + `DESTRUIR`) la infraestructura con estado remoto en S3.
 
 ## 3. Requisitos no funcionales
 
@@ -33,7 +37,7 @@ Permisos mínimos, OIDC sin claves estáticas, secretos en GitHub/SSM, SARIF con
 
 - **BE01-D1:** ECR es el registro principal; DockerHub opcional.
 - **BE01-D2:** Deploy solo en push a `main` con environment `production`.
-- **BE01-D3:** Terraform validate no ejecuta plan/apply.
+- **BE01-D3:** En `backend-ci-cd` Terraform solo valida; plan/apply/destroy van en `infra.yml` con aprobación manual.
 - **BE01-D4:** Smoke usa `/health`; no valida Mongo/Redis.
 
 ## 5. Criterios de aceptación

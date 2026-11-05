@@ -8,6 +8,8 @@ public interface IUserRepository
     Task<User?> GetByEmailAsync(string normalizedEmail, CancellationToken cancellationToken);
     Task<User?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken);
     Task<User?> GetByNicknameAsync(string nicknameLower, CancellationToken cancellationToken);
+    Task<User?> GetByGoogleSubAsync(string googleSub, CancellationToken cancellationToken);
+    Task LinkGoogleAsync(ObjectId id, string googleSub, DateTime at, CancellationToken cancellationToken);
     Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken);
     Task CreateAsync(User user, CancellationToken cancellationToken);
     Task UpdateLastLoginAsync(ObjectId id, DateTime at, CancellationToken cancellationToken);

@@ -37,6 +37,21 @@ public sealed class InMemoryUserRepository : IUserRepository
     public Task<User?> GetByNicknameAsync(string nicknameLower, CancellationToken cancellationToken) =>
         Task.FromResult(_users.Values.FirstOrDefault(x => x.NicknameLower == nicknameLower && x.DeletedAt is null));
 
+    public Task<User?> GetByGoogleSubAsync(string googleSub, CancellationToken cancellationToken) =>
+        Task.FromResult(_users.Values.FirstOrDefault(x => x.GoogleSub == googleSub && x.DeletedAt is null));
+
+    public Task LinkGoogleAsync(ObjectId id, string googleSub, DateTime at, CancellationToken cancellationToken)
+    {
+        if (_users.TryGetValue(id, out var user))
+        {
+            user.GoogleSub = googleSub;
+            user.EmailVerified = true;
+            user.UpdatedAt = at;
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<User>>(_users.Values.Where(x => ids.Contains(x.Id)).ToList());
 
@@ -884,5 +899,21 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         }
 
         return Task.FromResult(count);
+    }
+}
+
+/// <summary>Token de prueba: "google|sub|correo|verified" (verified = true/false).</summary>
+public sealed class FakeGoogleTokenValidator : Pactogg.Api.Infrastructure.Security.IGoogleTokenValidator
+{
+    public Task<Pactogg.Api.Infrastructure.Security.GoogleIdentity?> ValidateAsync(string idToken, CancellationToken cancellationToken)
+    {
+        var parts = idToken.Split('|');
+        if (parts.Length != 4 || parts[0] != "google")
+        {
+            return Task.FromResult<Pactogg.Api.Infrastructure.Security.GoogleIdentity?>(null);
+        }
+
+        return Task.FromResult<Pactogg.Api.Infrastructure.Security.GoogleIdentity?>(
+            new Pactogg.Api.Infrastructure.Security.GoogleIdentity(parts[1], parts[2], parts[3] == "true", "Jugador"));
     }
 }

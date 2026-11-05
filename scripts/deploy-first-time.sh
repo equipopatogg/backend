@@ -24,7 +24,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="$REPO_ROOT/deploy/terraform"
 TOOLS_DIR="${TOOLS_DIR:-$HOME/.local/pactogg-tools}"
-TF_VERSION="1.9.8"
+TF_VERSION="1.10.5"
 
 export AWS_PROFILE="${AWS_PROFILE:-pactogg}"
 export AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -170,7 +170,11 @@ fi
 # ---------------------------------------------------------------------------
 step "5/9 terraform init / fmt / validate"
 cd "$TF_DIR"
-terraform init -input=false -upgrade=false
+if [[ ! -f backend.hcl ]]; then
+  # Estado remoto en S3 (necesario para crear/destruir desde el pipeline).
+  bash "$REPO_ROOT/scripts/bootstrap-terraform-pipeline.sh"
+fi
+terraform init -input=false -upgrade=false -backend-config=backend.hcl
 terraform fmt -recursive
 terraform validate
 

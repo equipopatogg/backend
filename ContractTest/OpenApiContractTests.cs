@@ -25,6 +25,7 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
                      "/api/v1/auth/register",
                      "/api/v1/auth/login",
                      "/api/v1/auth/logout",
+                     "/api/v1/auth/google:",
                      "/api/v1/groups:",
                      "/api/v1/contracts:",
                      "/api/v1/contracts/{id}/evidence",
@@ -71,6 +72,7 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
         paths.TryGetProperty("/api/v1/auth/register", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/auth/login", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/auth/logout", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/auth/google", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/groups", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/contracts", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/contracts/{id}/evidence", out _).Should().BeTrue();

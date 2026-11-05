@@ -27,6 +27,16 @@ public sealed class MongoUserRepository : IUserRepository
         await _context.Users.Find(x => x.NicknameLower == nicknameLower && x.DeletedAt == null)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public async Task<User?> GetByGoogleSubAsync(string googleSub, CancellationToken cancellationToken) =>
+        await _context.Users.Find(x => x.GoogleSub == googleSub && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public Task LinkGoogleAsync(ObjectId id, string googleSub, DateTime at, CancellationToken cancellationToken) =>
+        _context.Users.UpdateOneAsync(
+            x => x.Id == id,
+            Builders<User>.Update.Set(x => x.GoogleSub, googleSub).Set(x => x.EmailVerified, true).Set(x => x.UpdatedAt, at),
+            cancellationToken: cancellationToken);
+
     public async Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0)

@@ -225,6 +225,7 @@ builder.Services.AddSingleton<ITokenRevocationStore, RedisTokenRevocationStore>(
 builder.Services.AddSingleton<ILoginAttemptStore, RedisLoginAttemptStore>();
 builder.Services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IGoogleTokenValidator, GoogleTokenValidator>();
 builder.Services.AddSingleton<IAuditService, MongoAuditService>();
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
 
@@ -303,7 +304,7 @@ app.UseAuthorization();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.6.0",
+    version = "0.6.1",
     status = "ok"
 })).AllowAnonymous();
 

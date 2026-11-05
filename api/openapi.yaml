@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: PactoGG API
   version: 1.0.0
-  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0).
+  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1).
 servers:
   - url: https://52-3-200-211.sslip.io
     description: Producción AWS (HTTPS, Let's Encrypt; cambia si se recrea la infraestructura)
@@ -70,6 +70,50 @@ paths:
                       data: { $ref: '#/components/schemas/Session' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/google:
+    post:
+      tags: [Auth]
+      operationId: googleAuth
+      summary: Entrar o registrarse con Google (AUTH-02 · ID 12)
+      description: >-
+        La app obtiene el ID token con Credential Manager / Google Sign-In (Client ID web del backend) y lo envía aquí.
+        El backend valida firma, emisor, audiencia y vigencia con las llaves públicas de Google.
+        Cuenta existente (por Google o por el mismo correo verificado) → 200 y se vincula.
+        Cuenta nueva → exige nickname, accept_privacy y privacy_version vigentes; sin nickname responde
+        422 NICKNAME_REQUIRED con details.email y details.suggested_name para mostrar la pantalla de apodo. Creada → 201.
+        Si el backend no tiene Client IDs configurados → 503 GOOGLE_AUTH_UNAVAILABLE (falla cerrada).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoogleAuthRequest' }
+      responses:
+        '200':
+          description: Sesión de cuenta existente
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Session' }
+        '201':
+          description: Cuenta creada con Google
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/auth/refresh:
     post:
       tags: [Auth]
@@ -1199,6 +1243,16 @@ components:
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 1, maxLength: 128 }
         device_id: { type: string, maxLength: 128, nullable: true }
+    GoogleAuthRequest:
+      type: object
+      required: [id_token]
+      additionalProperties: false
+      properties:
+        id_token: { type: string, minLength: 20, maxLength: 4096 }
+        nickname: { type: string, pattern: '^[A-Za-z0-9_.-]{3,24}$', description: Obligatorio solo la primera vez }
+        accept_privacy: { type: boolean, description: Obligatorio solo la primera vez }
+        privacy_version: { type: string, example: '2026-10-01' }
+        device_id: { type: string, maxLength: 128 }
     RefreshRequest:
       type: object
       required: [refresh_token]

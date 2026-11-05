@@ -168,6 +168,11 @@
 | F2-D32 | Avisos dentro de la app (colección `notifications`, TTL 90 días) como mejor esfuerzo; push FCM queda para después | Backlog ID 69 ("primero aviso dentro de la app") e ID 143 | Aprobada |
 | F2-D33 | Muro de la Fama = retos `fulfilled` con fotos/clips aprobados; resumen y resultado de votación sin caché | Backlog ID 132; exactitud del estado de votación | Aprobada |
 | F2-D34 | Flujo Git con ramas `feature/*` y Pull Request a `main`; el pipeline prueba los PR y solo despliega al fusionar en `main` | Instrucción del PO (buenas prácticas en GitHub) | Aprobada |
+| F2-D35 | Login con Google (ID 12): validación propia del ID token con las llaves públicas de Google; vincula por correo verificado; cuenta nueva exige apodo y privacidad; sin Client ID → 503 | Sprint 2 del plan y D-15 | Aprobada |
+| F2-D36 | Crear/eliminar infraestructura desde el pipeline (`infra.yml`) con estado en S3 y bloqueo nativo; bootstrap separado (bucket, OIDC, rol de Terraform) | Plan del sprint 2 ("crear y eliminar desde el pipeline") y requisitos v3 | Aprobada |
+| F2-D37 | Pipeline con Semgrep, Dockle y compuerta `quality-gate` además de CodeQL y Trivy | Plan del sprint 2 ("Semgrep, Trivy, Dockle y compuerta") | Aprobada |
+| F2-D38 | Script de la BD `database/mongo-init.js` con validadores en modo `warn` | Plan del sprint 2 ("Script de la BD en el repositorio") | Aprobada |
+| F2-D39 | La imagen Docker excluye `appsettings.*.local.json` y otros secretos locales | Revisión de seguridad: el build local podía meter la cadena de Atlas en la imagen | Aprobada |
 
 ### 2.1 Registro de aprobación de la Fase 2
 
@@ -343,6 +348,7 @@ cd deploy/terraform && terraform fmt -check -recursive && terraform validate
 | 2026-10-30 | 0.1.1 | Verificación de restore, build, API y auditoría de dependencias; paquetes endurecidos sin CVEs altas | Agente OpenCode |
 | 2026-11-02 | 0.2.0 | Fase 2: siete endpoints, auth/grupos/contratos/evidencias/torneos, moderación, S3, OpenAPI, Docker/Terraform y 42 pruebas en verde | Agente OpenCode |
 | 2026-11-02 | 0.3.0 | Terraform AWS completo en `deploy/terraform`, pipeline `backend-ci-cd.yml`, pruebas funcionales en los 7 proyectos y moderación antes de S3; 49 pruebas en verde y 1 omitida | Agente OpenCode |
+| 2026-11-04 | 0.6.1 | Cierre del sprint 2 según el plan nuevo: login con Google, Semgrep + Dockle + compuerta, `infra.yml` (crear/eliminar), bootstrap de estado remoto, script de la BD, SDD 001–003 y plan de pruebas; F2-D35 a F2-D39 | Claude / PO David |
 | 2026-11-04 | 0.6.0 | 15 endpoints de jurado, votación con cierre transaccional de fianza, puntos (saldo y ranking), compromisos, avisos en la app y Muro de la Fama; decisiones F2-D29 a F2-D34; flujo de ramas y PR | Claude / PO David |
 | 2026-11-04 | 0.5.0 | 11 endpoints: perfil (ver/editar/apodo libre), mis grupos, detalle, unirse con código, miembros, tablero de retos, detalle de reto, aceptar con fianza transaccional y `points_ledger`, rechazar; caché por versiones; decisiones F2-D23 a F2-D28 | Claude / PO David |
 | 2026-11-04 | 0.4.2 | Política de moderación de imágenes para videojuegos (F2-D22) con pruebas unitarias; configurable en `Moderation:Image` | Claude / PO David |

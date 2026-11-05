@@ -1,6 +1,6 @@
 # API PactoGG — guía para el equipo Móvil
 
-**Actualizado:** 2026-11-04 (v0.6.0: 34 endpoints, 36 rutas contando alias) · **Contrato vinculante:** [`api/openapi.yaml`](../api/openapi.yaml) (ábrelo en <https://editor.swagger.io> → File → Import file).
+**Actualizado:** 2026-11-04 (v0.6.1: 35 endpoints, 37 rutas contando alias) · **Contrato vinculante:** [`api/openapi.yaml`](../api/openapi.yaml) (ábrelo en <https://editor.swagger.io> → File → Import file).
 
 ## 1. Direcciones
 
@@ -37,6 +37,7 @@
 |---|---|---|---|---|
 | USR-01 | `POST /api/v1/auth/register` | No | `email`, `password` (12–128), `nickname` (`^[A-Za-z0-9_.-]{3,24}$`), `accept_privacy: true`, `privacy_version: "2026-10-01"`, `device_id?` | `201` sesión |
 | AUTH-01 | `POST /api/v1/auth/login` | No | `email`, `password`, `device_id?` | `200` sesión; `401 INVALID_CREDENTIALS`; `429` tras 5 fallos |
+| AUTH-02 | `POST /api/v1/auth/google` | No | `id_token` (de Google Sign-In / Credential Manager con el **Client ID web** del backend); la primera vez además `nickname`, `accept_privacy: true`, `privacy_version` | `200` sesión (ya existía) o `201` (creada); `422 NICKNAME_REQUIRED` → muestra la pantalla de apodo y reintenta; `401 INVALID_GOOGLE_TOKEN`; `503` si el backend no tiene Client ID |
 | AUTH-03 | `POST /api/v1/auth/refresh` | No | `refresh_token`, `device_id?` | `200` sesión nueva |
 | AUTH-04 | `POST /api/v1/auth/logout` | Sí | `refresh_token?`, `all?` | `204` |
 | GRP-01 | `POST /api/v1/groups` | Sí | `name` (2–40), `settings?` (`jurors`, `consensus`, `bond_options`) | `201` grupo con `invite_code`, `my_role`, `my_points` |
@@ -82,7 +83,7 @@ curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
 
 ## 6. Lo que todavía NO existe
 
-Editar/cancelar retos, Muro de la Vergüenza, push (FCM), crear torneos y partidas,  contrato por voz con IA, reportes, eliminar cuenta, login con Google y verificación de correo. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
+Editar/cancelar retos, Muro de la Vergüenza, push (FCM), crear torneos y partidas,  contrato por voz con IA, reportes, eliminar cuenta y verificación de correo. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
 
 ## 7. Reglas que la app debe respetar
 

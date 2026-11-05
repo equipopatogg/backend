@@ -94,6 +94,8 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAuditService, FakeAuditService>();
             services.AddSingleton<IModerationService>(Moderation);
             services.AddSingleton<IObjectStorage>(Storage);
+            services.RemoveAll<Pactogg.Api.Infrastructure.Security.IGoogleTokenValidator>();
+            services.AddSingleton<Pactogg.Api.Infrastructure.Security.IGoogleTokenValidator, FakeGoogleTokenValidator>();
             services.AddSingleton<Pactogg.Api.Modules.Votes.Abstractions.IVoteRepository>(Votes);
             services.AddSingleton<Pactogg.Api.Modules.Commitments.Abstractions.ICommitmentRepository>(Commitments);
             services.AddSingleton<Pactogg.Api.Modules.Notifications.Abstractions.INotificationRepository>(Notifications);

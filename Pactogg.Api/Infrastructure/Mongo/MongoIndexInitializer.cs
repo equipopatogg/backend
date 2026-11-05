@@ -38,7 +38,15 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Unique = true, Name = "ux_users_email" }),
             new CreateIndexModel<Modules.Auth.Domain.User>(
                 Builders<Modules.Auth.Domain.User>.IndexKeys.Ascending(x => x.NicknameLower),
-                new CreateIndexOptions { Unique = true, Name = "ux_users_nickname_lower" })
+                new CreateIndexOptions { Unique = true, Name = "ux_users_nickname_lower" }),
+            new CreateIndexModel<Modules.Auth.Domain.User>(
+                Builders<Modules.Auth.Domain.User>.IndexKeys.Ascending(x => x.GoogleSub),
+                new CreateIndexOptions<Modules.Auth.Domain.User>
+                {
+                    Unique = true,
+                    Name = "ux_users_google_sub",
+                    PartialFilterExpression = Builders<Modules.Auth.Domain.User>.Filter.Type(x => x.GoogleSub, MongoDB.Bson.BsonType.String)
+                })
         ], cancellationToken);
 
         await _context.RefreshTokens.Indexes.CreateManyAsync(

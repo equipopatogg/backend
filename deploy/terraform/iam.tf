@@ -188,7 +188,8 @@ resource "aws_iam_role_policy" "github_actions" {
         Action = [
           "ssm:GetCommandInvocation",
           "ssm:ListCommandInvocations",
-          "ec2:DescribeInstances"
+          "ec2:DescribeInstances",
+          "ec2:DescribeAddresses"
         ]
         Resource = "*"
       }

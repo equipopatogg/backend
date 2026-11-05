@@ -35,6 +35,24 @@ public sealed class LoginRequest
     public string? DeviceId { get; set; }
 }
 
+/// <summary>ID 12: entrar o registrarse con Google. Para una cuenta nueva se exige apodo y aceptar la privacidad (D-15).</summary>
+public sealed class GoogleAuthRequest
+{
+    [Required, StringLength(4096, MinimumLength = 20)]
+    public string IdToken { get; set; } = string.Empty;
+
+    [RegularExpression("^[A-Za-z0-9_.-]{3,24}$")]
+    public string? Nickname { get; set; }
+
+    public bool? AcceptPrivacy { get; set; }
+
+    [StringLength(32)]
+    public string? PrivacyVersion { get; set; }
+
+    [StringLength(128)]
+    public string? DeviceId { get; set; }
+}
+
 public sealed class LogoutRequest
 {
     public string? RefreshToken { get; set; }

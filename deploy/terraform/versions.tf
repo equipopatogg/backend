@@ -1,5 +1,13 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
+
+  # Estado remoto en S3 (creado por deploy/bootstrap) para crear y destruir desde el pipeline.
+  # Configuración parcial: bucket/región van en backend.hcl (local) o en -backend-config (pipeline).
+  backend "s3" {
+    key          = "pactogg/prod/terraform.tfstate"
+    encrypt      = true
+    use_lockfile = true
+  }
 
   required_providers {
     aws = {

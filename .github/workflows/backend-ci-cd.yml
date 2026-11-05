@@ -23,6 +23,8 @@ env:
   INSTANCE_IDS: ${{ vars.INSTANCE_IDS }}
   PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
   TRIVY_VERSION: "0.69.3"
+  SEMGREP_VERSION: "1.95.0"
+  DOCKLE_VERSION: "v0.4.14"
 
 jobs:
   build-test:
@@ -96,6 +98,36 @@ jobs:
 
       - uses: github/codeql-action/analyze@v4
 
+  semgrep:
+    name: sast-semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reglas de C#, secretos y OWASP. Falla solo con hallazgos de severidad ERROR.
+      - name: Semgrep scan
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:${SEMGREP_VERSION} \
+            semgrep scan --config p/csharp --config p/secrets --config p/owasp-top-ten \
+            --exclude IntegrationTest --exclude UnitTest --exclude SecurityTest \
+            --sarif --output semgrep.sarif --metrics off || true
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:${SEMGREP_VERSION} \
+            semgrep scan --config p/csharp --config p/secrets --config p/owasp-top-ten \
+            --exclude IntegrationTest --exclude UnitTest --exclude SecurityTest \
+            --severity ERROR --error --metrics off
+
+      - name: Upload Semgrep SARIF
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
   sca:
     name: sca-dependencies
     runs-on: ubuntu-latest
@@ -158,7 +190,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.8"
+          terraform_version: "1.10.5"
 
       - name: Format
         run: terraform fmt -check -recursive
@@ -169,9 +201,34 @@ jobs:
       - name: Validate
         run: terraform validate -no-color
 
+  # Compuerta de calidad: un solo check obligatorio para proteger main.
+  # Pasa solo si pruebas, CodeQL, Semgrep, dependencias/Trivy y Terraform pasaron.
+  quality-gate:
+    name: quality-gate
+    needs: [build-test, sast, semgrep, sca, terraform]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Evaluate required jobs
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          failed = [name for name, job in needs.items() if job["result"] != "success"]
+          for name, job in needs.items():
+              print(name + ": " + job["result"])
+          if failed:
+              sys.exit("Compuerta cerrada: " + ", ".join(failed))
+          print("Compuerta abierta.")
+          '
+
   docker:
     name: docker-build-scan-push
-    needs: [build-test, sast, sca, terraform]
+    needs: [quality-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -195,6 +252,13 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:${TRIVY_VERSION} image --severity CRITICAL,HIGH --ignore-unfixed \
             --format table --exit-code 1 "pactogg-api:${GITHUB_SHA}"
+
+      # Buenas prácticas de la imagen (CIS Docker Benchmark). Falla con hallazgos FATAL.
+      - name: Dockle image lint
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            goodwithtech/dockle:${DOCKLE_VERSION} --exit-code 1 --exit-level fatal \
+            "pactogg-api:${GITHUB_SHA}"
 
       - name: Upload image SARIF
         if: always() && hashFiles('trivy-image.sarif') != ''
@@ -269,7 +333,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          : "${INSTANCE_IDS:?Define la variable INSTANCE_IDS con el output instance_ids separado por espacios}"
+          # Las instancias se buscan por etiqueta: si infra.yml recrea la infraestructura, los IDs cambian.
+          discovered="$(aws ec2 describe-instances \
+            --filters "Name=tag:Project,Values=pactogg" "Name=tag:Role,Values=api" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)"
+          INSTANCE_IDS="${discovered:-${INSTANCE_IDS:-}}"
+          : "${INSTANCE_IDS:?No se encontraron instancias de la API}"
           # shellcheck disable=SC2086
           command_id="$(aws ssm send-command \
             --document-name AWS-RunShellScript \
@@ -297,15 +366,32 @@ jobs:
     needs: deploy
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Health check
         shell: bash
         run: |
           set -euo pipefail
-          : "${PUBLIC_BASE_URL:?Define la variable PUBLIC_BASE_URL con el output api_url}"
-          base="${PUBLIC_BASE_URL%/}"
+          base="${PUBLIC_BASE_URL:-}"
+          if [ -z "$base" ]; then
+            # Sin dominio propio la URL es <ip-con-guiones>.sslip.io del gateway.
+            ip="$(aws ec2 describe-addresses --filters "Name=tag:Name,Values=pactogg-prod-gateway" \
+              --query 'Addresses[0].PublicIp' --output text)"
+            base="https://${ip//./-}.sslip.io"
+          fi
+          base="${base%/}"
+          echo "Probando ${base}/health"
           for _ in $(seq 1 30); do
             if curl --fail --silent --show-error --max-time 10 "${base}/health"; then
               exit 0

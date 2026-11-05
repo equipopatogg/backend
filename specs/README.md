@@ -2,6 +2,16 @@
 
 Estado 2026-11-04: corte de evaluación desplegado en AWS (costo cero) 11 endpoints sociales (v0.5.0) y 15 de jurado/puntos/compromisos/avisos (v0.6.0) verificados localmente. [Validación](validation.md) · [Preguntas abiertas](open-questions.md) · [Endpoints](../docs/endpoints.md).
 
+## Especificaciones por funcionalidad (SDD, sprint 2)
+
+| Feature | Alcance | Estado |
+|---|---|---|
+| [001 Infraestructura y DevSecOps](001-infraestructura-devsecops/spec.md) | Terraform (crear/eliminar desde pipeline), CI/CD con CodeQL, Semgrep, Trivy, Dockle y compuerta, script de la BD | Implementado |
+| [002 Cuentas y sesión](002-cuentas-y-sesion/spec.md) | IDs 11, 12 (Google), 13, 14, 15, 19, 21, 22, 158 | Implementado |
+| [003 Grupos](003-grupos/spec.md) | IDs 30, 31, 32, 159 | Implementado |
+
+Cada feature agrupa los expedientes por endpoint de abajo e incluye spec, plan, tareas y checklist de validación. [Plan de pruebas](../docs/plan-de-pruebas.md).
+
 ## Base
 
 | Expediente | Implementación | Límite pendiente |

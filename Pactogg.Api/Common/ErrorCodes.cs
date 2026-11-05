@@ -25,6 +25,9 @@ public static class ErrorCodes
     public const string InsufficientPoints = "INSUFFICIENT_POINTS";
     public const string AlreadyMember = "ALREADY_MEMBER";
     public const string GroupFull = "GROUP_FULL";
+    public const string InvalidGoogleToken = "INVALID_GOOGLE_TOKEN";
+    public const string GoogleAuthUnavailable = "GOOGLE_AUTH_UNAVAILABLE";
+    public const string NicknameRequired = "NICKNAME_REQUIRED";
     public const string NotJuror = "NOT_JUROR";
     public const string AlreadyVoted = "ALREADY_VOTED";
     public const string VotingNotFinished = "VOTING_NOT_FINISHED";

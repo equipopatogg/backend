@@ -21,6 +21,10 @@ public sealed class User
     [BsonElement("nickname_lower")]
     public string NicknameLower { get; set; } = string.Empty;
 
+    /// <summary>"sub" de la cuenta de Google vinculada (ID 12). Null si solo usa correo y contraseña.</summary>
+    [BsonElement("google_sub")]
+    public string? GoogleSub { get; set; }
+
     [BsonElement("avatar_id")]
     public string AvatarId { get; set; } = "default";
 

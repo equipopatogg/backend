@@ -55,3 +55,6 @@ session-*.md
 
 # Copias temporales de la app de Claude
 Claude outputs/
+
+# Estado remoto de Terraform (bucket por cuenta)
+deploy/terraform/backend.hcl

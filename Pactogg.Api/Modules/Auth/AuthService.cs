@@ -24,6 +24,7 @@ public sealed class AuthService
     private readonly IAuditService _audit;
     private readonly AuthOptions _authOptions;
     private readonly JwtOptions _jwtOptions;
+    private readonly IGoogleTokenValidator _google;
 
     public AuthService(
         IUserRepository users,
@@ -34,8 +35,10 @@ public sealed class AuthService
         ITokenRevocationStore revocations,
         IAuditService audit,
         IOptions<AuthOptions> authOptions,
-        IOptions<JwtOptions> jwtOptions)
+        IOptions<JwtOptions> jwtOptions,
+        IGoogleTokenValidator google)
     {
+        _google = google;
         _users = users;
         _refreshTokens = refreshTokens;
         _passwordHasher = passwordHasher;
@@ -126,6 +129,88 @@ public sealed class AuthService
         var session = await CreateSessionAsync(user, request.DeviceId, cancellationToken);
         await _audit.AppendAsync("auth.login", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
         return session;
+    }
+
+    /// <summary>
+    /// AUTH-02 / ID 12: entra con Google o crea la cuenta. Si el correo ya existe y Google lo verificó,
+    /// vincula la cuenta. Una cuenta nueva exige apodo y aceptar la privacidad vigente.
+    /// Devuelve (sesión, creada).
+    /// </summary>
+    public async Task<(SessionResponse Session, bool Created)> GoogleAsync(GoogleAuthRequest request, CancellationToken cancellationToken)
+    {
+        var identity = await _google.ValidateAsync(request.IdToken, cancellationToken)
+            ?? throw ApiException.Unauthorized(ErrorCodes.InvalidGoogleToken, "El token de Google no es válido.");
+        if (!identity.EmailVerified)
+        {
+            throw ApiException.Unauthorized(ErrorCodes.InvalidGoogleToken, "Google no ha verificado ese correo.");
+        }
+
+        var now = DateTime.UtcNow;
+        var user = await _users.GetByGoogleSubAsync(identity.Subject, cancellationToken);
+        if (user is null)
+        {
+            user = await _users.GetByEmailAsync(identity.Email, cancellationToken);
+            if (user is not null)
+            {
+                await _users.LinkGoogleAsync(user.Id, identity.Subject, now, cancellationToken);
+                await _audit.AppendAsync("auth.google_linked", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
+            }
+        }
+
+        if (user is not null)
+        {
+            if (user.Status != "active")
+            {
+                throw ApiException.Unauthorized(ErrorCodes.Unauthorized, "La cuenta no está activa.");
+            }
+
+            await _users.UpdateLastLoginAsync(user.Id, now, cancellationToken);
+            var existing = await CreateSessionAsync(user, request.DeviceId, cancellationToken);
+            await _audit.AppendAsync("auth.login_google", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
+            return (existing, false);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Nickname))
+        {
+            throw ApiException.Unprocessable(
+                ErrorCodes.NicknameRequired,
+                "Es tu primera vez: elige un apodo.",
+                new { email = identity.Email, suggested_name = identity.Name });
+        }
+
+        if (request.AcceptPrivacy != true
+            || !string.Equals(request.PrivacyVersion, _authOptions.CurrentPrivacyVersion, StringComparison.Ordinal))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Debes aceptar la política de privacidad vigente.");
+        }
+
+        var nickname = request.Nickname.Trim();
+        if (await _users.GetByNicknameAsync(nickname.ToLowerInvariant(), cancellationToken) is not null)
+        {
+            throw ApiException.Conflict(ErrorCodes.NicknameAlreadyExists, "El apodo ya está en uso.");
+        }
+
+        var created = new User
+        {
+            Id = ObjectId.GenerateNewId(),
+            Email = identity.Email,
+            Nickname = nickname,
+            NicknameLower = nickname.ToLowerInvariant(),
+            // Sin contraseña: el hash vacío nunca valida en /auth/login.
+            PasswordHash = string.Empty,
+            GoogleSub = identity.Subject,
+            EmailVerified = true,
+            Stats = new UserStats(),
+            Consent = new ConsentRecord { Version = _authOptions.CurrentPrivacyVersion, AcceptedAt = now },
+            Status = "active",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        await _users.CreateAsync(created, cancellationToken);
+        var session = await CreateSessionAsync(created, request.DeviceId, cancellationToken);
+        await _audit.AppendAsync("user.registered_google", created.Id, "user", created.Id, null, new { user_id = created.Id.ToString() }, cancellationToken);
+        return (session, true);
     }
 
     public async Task<SessionResponse> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken)

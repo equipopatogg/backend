@@ -61,7 +61,8 @@ public sealed class RedisRateLimitMiddleware
         }
 
         if (string.Equals(path.Value, "/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path.Value, "/api/v1/auth/google", StringComparison.OrdinalIgnoreCase))
         {
             return ("login", _options.LoginPermitLimit, TimeSpan.FromSeconds(_options.LoginWindowSeconds));
         }
