@@ -51,6 +51,35 @@ public sealed class Contract
     [BsonElement("closed_reason")]
     public string? ClosedReason { get; set; }
 
+    /// <summary>Quien debe cumplir el reto: accepted_by, o el retado, o quien subió la primera evidencia.</summary>
+    [BsonElement("executor_id")]
+    public ObjectId? ExecutorId { get; set; }
+
+    [BsonElement("jurors")]
+    public List<ObjectId> Jurors { get; set; } = [];
+
+    [BsonElement("voters")]
+    public List<ObjectId> Voters { get; set; } = [];
+
+    [BsonElement("legit_votes")]
+    public int LegitVotes { get; set; }
+
+    [BsonElement("cheat_votes")]
+    public int CheatVotes { get; set; }
+
+    [BsonElement("voting_started_at")]
+    public DateTime? VotingStartedAt { get; set; }
+
+    [BsonElement("voting_ends_at")]
+    public DateTime? VotingEndsAt { get; set; }
+
+    /// <summary>jury o admin.</summary>
+    [BsonElement("resolved_by")]
+    public string? ResolvedBy { get; set; }
+
+    [BsonElement("resolved_at")]
+    public DateTime? ResolvedAt { get; set; }
+
     [BsonElement("source")]
     public string Source { get; set; } = "manual";
 

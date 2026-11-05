@@ -128,6 +128,12 @@ variable "github_repo" {
   default     = "equipopatogg/backend"
 }
 
+variable "github_repo_with_ids" {
+  description = "Repositorio con IDs inmutables (owner@OWNER_ID/repo@REPO_ID) tal como GitHub lo envía en el claim sub. Vacío si no aplica."
+  type        = string
+  default     = "equipopatogg@349079173/backend@1436429805"
+}
+
 variable "github_branch" {
   description = "Rama autorizada para desplegar."
   type        = string

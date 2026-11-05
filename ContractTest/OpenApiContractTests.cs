@@ -36,7 +36,21 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
                      "/api/v1/groups/{id}/members:",
                      "/api/v1/contracts/{id}:",
                      "/api/v1/contracts/{id}/accept:",
-                     "/api/v1/contracts/{id}/reject:"
+                     "/api/v1/contracts/{id}/reject:",
+                     "/api/v1/me/votes/pending:",
+                     "/api/v1/contracts/{id}/votes:",
+                     "/api/v1/contracts/{id}/votes/summary:",
+                     "/api/v1/contracts/{id}/votes/resolve:",
+                     "/api/v1/contracts/{id}/result:",
+                     "/api/v1/groups/{gid}/points/me:",
+                     "/api/v1/groups/{gid}/points/ranking:",
+                     "/api/v1/groups/{gid}/commitments:",
+                     "/api/v1/commitments/{id}/complete:",
+                     "/api/v1/commitments/{id}/request-complete:",
+                     "/api/v1/notifications:",
+                     "/api/v1/notifications/{id}/read:",
+                     "/api/v1/notifications/read-all:",
+                     "/api/v1/groups/{gid}/fame:"
                  })
         {
             text.Should().Contain(path);
@@ -64,5 +78,8 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
         paths.TryGetProperty("/api/v1/users/me", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/groups/join", out _).Should().BeTrue();
         paths.TryGetProperty("/api/v1/contracts/{id}/accept", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/contracts/{id}/votes", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/notifications", out _).Should().BeTrue();
+        paths.TryGetProperty("/api/v1/groups/{gid}/fame", out _).Should().BeTrue();
     }
 }

@@ -7,6 +7,7 @@ using Pactogg.Api.Modules.Contracts.Abstractions;
 using Pactogg.Api.Modules.Contracts.Domain;
 using Pactogg.Api.Modules.Contracts.Dtos;
 using Pactogg.Api.Modules.Groups.Abstractions;
+using Pactogg.Api.Modules.Notifications;
 
 namespace Pactogg.Api.Modules.Contracts;
 
@@ -18,6 +19,7 @@ public sealed class ContractService
     private readonly IModerationService _moderation;
     private readonly IAuditService _audit;
     private readonly ICacheService _cache;
+    private readonly NotificationService _notifications;
 
     public ContractService(
         IContractRepository contracts,
@@ -25,9 +27,11 @@ public sealed class ContractService
         IGroupMemberRepository members,
         IModerationService moderation,
         IAuditService audit,
-        ICacheService cache)
+        ICacheService cache,
+        NotificationService notifications)
     {
         _cache = cache;
+        _notifications = notifications;
         _contracts = contracts;
         _groups = groups;
         _members = members;
@@ -122,6 +126,7 @@ public sealed class ContractService
         await _audit.AppendAsync("contract.created", userId, "contract", contract.Id, groupId, new { contract_id = contract.Id.ToString() }, cancellationToken);
 
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(groupId), cancellationToken);
+        await NotifyCreatedAsync(group.Name, contract, cancellationToken);
         return ToResponse(contract);
     }
 
@@ -230,6 +235,14 @@ public sealed class ContractService
             cancellationToken);
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(accepted.GroupId), cancellationToken);
         await _cache.BumpVersionAsync(CacheExtensions.UserScope(userId), cancellationToken);
+        await _notifications.NotifyAsync(
+            [accepted.ChallengerId],
+            "contract_accepted",
+            "Aceptaron tu reto",
+            $"{accepted.Game}: {accepted.Condition}",
+            accepted.GroupId,
+            accepted.Id,
+            cancellationToken: cancellationToken);
 
         return ToResponse(accepted, result.BalanceAfter);
     }
@@ -306,7 +319,34 @@ public sealed class ContractService
         return contract;
     }
 
-    private static ContractResponse ToResponse(Contract contract, int? myPoints = null) => new()
+    /// <summary>ID 69: aviso de reto recibido (al retado, o a todo el grupo menos el retador).</summary>
+    private async Task NotifyCreatedAsync(string groupName, Contract contract, CancellationToken cancellationToken)
+    {
+        IEnumerable<ObjectId> recipients;
+        string title;
+        if (contract.TargetType == "member" && contract.TargetId is ObjectId target)
+        {
+            recipients = [target];
+            title = "Te retaron";
+        }
+        else
+        {
+            var (members, _) = await _members.ListByGroupAsync(contract.GroupId, null, 50, null, cancellationToken);
+            recipients = members.Select(x => x.UserId).Where(x => x != contract.ChallengerId);
+            title = $"Nuevo reto en {groupName}";
+        }
+
+        await _notifications.NotifyAsync(
+            recipients,
+            "contract_received",
+            title,
+            $"{contract.Game}: {contract.Condition} · Fianza {contract.BondRequired} pts",
+            contract.GroupId,
+            contract.Id,
+            cancellationToken: cancellationToken);
+    }
+
+    internal static ContractResponse ToResponse(Contract contract, int? myPoints = null) => new()
     {
         Id = contract.Id.ToString(),
         GroupId = contract.GroupId.ToString(),
@@ -322,6 +362,11 @@ public sealed class ContractService
         AcceptedBy = contract.AcceptedBy?.ToString(),
         AcceptedAt = contract.AcceptedAt,
         ClosedReason = contract.ClosedReason,
+        ExecutorId = contract.ExecutorId?.ToString(),
+        JurorsCount = contract.Jurors.Count,
+        VotingEndsAt = contract.VotingEndsAt,
+        ResolvedBy = contract.ResolvedBy,
+        ResolvedAt = contract.ResolvedAt,
         EvidenceCount = contract.EvidenceCount,
         Version = contract.Version,
         CreatedAt = contract.CreatedAt,

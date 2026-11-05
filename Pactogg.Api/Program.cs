@@ -30,6 +30,15 @@ using Pactogg.Api.Modules.Evidence.Abstractions;
 using Pactogg.Api.Modules.Groups;
 using Pactogg.Api.Modules.Groups.Abstractions;
 using Pactogg.Api.Modules.Users;
+using Pactogg.Api.Modules.Votes;
+using Pactogg.Api.Modules.Votes.Abstractions;
+using Pactogg.Api.Modules.Commitments;
+using Pactogg.Api.Modules.Commitments.Abstractions;
+using Pactogg.Api.Modules.Notifications;
+using Pactogg.Api.Modules.Notifications.Abstractions;
+using Pactogg.Api.Modules.Points;
+using Pactogg.Api.Modules.Points.Abstractions;
+using Pactogg.Api.Modules.Fame;
 using Pactogg.Api.Modules.Tournaments;
 using Pactogg.Api.Modules.Tournaments.Abstractions;
 using Serilog;
@@ -245,6 +254,10 @@ builder.Services.AddScoped<IContractRepository, MongoContractRepository>();
 builder.Services.AddScoped<IEvidenceRepository, MongoEvidenceRepository>();
 builder.Services.AddScoped<ITournamentRepository, MongoTournamentRepository>();
 builder.Services.AddScoped<IMatchRepository, MongoMatchRepository>();
+builder.Services.AddScoped<IVoteRepository, MongoVoteRepository>();
+builder.Services.AddScoped<ICommitmentRepository, MongoCommitmentRepository>();
+builder.Services.AddScoped<INotificationRepository, MongoNotificationRepository>();
+builder.Services.AddScoped<IPointsLedgerRepository, MongoPointsLedgerRepository>();
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<GroupService>();
@@ -252,6 +265,12 @@ builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<EvidenceService>();
 builder.Services.AddScoped<TournamentService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<GroupAccess>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<VoteService>();
+builder.Services.AddScoped<PointsService>();
+builder.Services.AddScoped<CommitmentService>();
+builder.Services.AddScoped<FameService>();
 
 var app = builder.Build();
 
@@ -284,7 +303,7 @@ app.UseAuthorization();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.5.0",
+    version = "0.6.0",
     status = "ok"
 })).AllowAnonymous();
 
@@ -295,6 +314,11 @@ app.MapGroupEndpoints();
 app.MapContractEndpoints();
 app.MapEvidenceEndpoints();
 app.MapTournamentEndpoints();
+app.MapVoteEndpoints();
+app.MapPointsEndpoints();
+app.MapCommitmentEndpoints();
+app.MapNotificationEndpoints();
+app.MapFameEndpoints();
 
 app.Run();
 

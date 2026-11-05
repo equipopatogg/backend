@@ -44,6 +44,11 @@ public sealed class ContractResponse
     public string? AcceptedBy { get; init; }
     public DateTime? AcceptedAt { get; init; }
     public string? ClosedReason { get; init; }
+    public string? ExecutorId { get; init; }
+    public int JurorsCount { get; init; }
+    public DateTime? VotingEndsAt { get; init; }
+    public string? ResolvedBy { get; init; }
+    public DateTime? ResolvedAt { get; init; }
     public int EvidenceCount { get; init; }
     public int Version { get; init; }
     public DateTime CreatedAt { get; init; }

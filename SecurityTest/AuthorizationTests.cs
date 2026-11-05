@@ -26,10 +26,25 @@ public sealed class AuthorizationTests : IClassFixture<WebApplicationFactory<Pro
     [InlineData("GET", "/api/v1/contracts/000000000000000000000000")]
     [InlineData("POST", "/api/v1/contracts/000000000000000000000000/accept")]
     [InlineData("POST", "/api/v1/contracts/000000000000000000000000/reject")]
+    [InlineData("GET", "/api/v1/contracts/000000000000000000000000/evidence")]
+    [InlineData("GET", "/api/v1/me/votes/pending")]
+    [InlineData("PUT", "/api/v1/contracts/000000000000000000000000/votes")]
+    [InlineData("GET", "/api/v1/contracts/000000000000000000000000/votes/summary")]
+    [InlineData("POST", "/api/v1/contracts/000000000000000000000000/votes/resolve")]
+    [InlineData("GET", "/api/v1/contracts/000000000000000000000000/result")]
+    [InlineData("GET", "/api/v1/groups/000000000000000000000000/points/me")]
+    [InlineData("GET", "/api/v1/groups/000000000000000000000000/points/ranking")]
+    [InlineData("GET", "/api/v1/groups/000000000000000000000000/commitments")]
+    [InlineData("POST", "/api/v1/commitments/000000000000000000000000/complete")]
+    [InlineData("POST", "/api/v1/commitments/000000000000000000000000/request-complete")]
+    [InlineData("GET", "/api/v1/notifications")]
+    [InlineData("PATCH", "/api/v1/notifications/000000000000000000000000/read")]
+    [InlineData("POST", "/api/v1/notifications/read-all")]
+    [InlineData("GET", "/api/v1/groups/000000000000000000000000/fame")]
     public async Task ProtectedEndpoints_WithoutToken_Return401(string method, string path)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
-        if (method is "POST" or "PATCH")
+        if (method is "POST" or "PATCH" or "PUT")
         {
             request.Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
         }

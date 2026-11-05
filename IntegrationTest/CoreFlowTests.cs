@@ -36,10 +36,14 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
     public InMemoryMatchRepository Matches { get; } = new();
     public FakeObjectStorage Storage { get; } = new();
     public FakeModerationService Moderation { get; } = new();
+    public InMemoryCommitmentRepository Commitments { get; } = new();
+    public InMemoryPointsLedgerRepository Ledger { get; } = new();
+    public InMemoryVoteRepository Votes { get; } = new();
+    public InMemoryNotificationRepository Notifications { get; } = new();
 
     public PactoggWebFactory()
     {
-        Contracts = new InMemoryContractRepository(Members);
+        Contracts = new InMemoryContractRepository(Members, Users, Commitments, Ledger);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -74,6 +78,10 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
             services.RemoveAll<IAuditService>();
             services.RemoveAll<IModerationService>();
             services.RemoveAll<IObjectStorage>();
+            services.RemoveAll<Pactogg.Api.Modules.Votes.Abstractions.IVoteRepository>();
+            services.RemoveAll<Pactogg.Api.Modules.Commitments.Abstractions.ICommitmentRepository>();
+            services.RemoveAll<Pactogg.Api.Modules.Notifications.Abstractions.INotificationRepository>();
+            services.RemoveAll<Pactogg.Api.Modules.Points.Abstractions.IPointsLedgerRepository>();
 
             services.AddSingleton<IUserRepository>(Users);
             services.AddSingleton<IRefreshTokenRepository>(RefreshTokens);
@@ -86,6 +94,10 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAuditService, FakeAuditService>();
             services.AddSingleton<IModerationService>(Moderation);
             services.AddSingleton<IObjectStorage>(Storage);
+            services.AddSingleton<Pactogg.Api.Modules.Votes.Abstractions.IVoteRepository>(Votes);
+            services.AddSingleton<Pactogg.Api.Modules.Commitments.Abstractions.ICommitmentRepository>(Commitments);
+            services.AddSingleton<Pactogg.Api.Modules.Notifications.Abstractions.INotificationRepository>(Notifications);
+            services.AddSingleton<Pactogg.Api.Modules.Points.Abstractions.IPointsLedgerRepository>(Ledger);
         });
     }
 }

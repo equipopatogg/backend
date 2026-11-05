@@ -162,6 +162,12 @@
 | F2-D26 | Unirse: máximo 20 miembros por grupo (`Auth:MaxMembersPerGroup`) con incremento atómico; 409 `ALREADY_MEMBER`/`GROUP_FULL`/`GROUP_LIMIT_REACHED`; 10 intentos cada 10 min | Constitución §6.2 y CRUD MEM-01 | Aprobada |
 | F2-D27 | `check-nickname` público con 3–24 caracteres (igual que el registro, D-15) y 20 consultas/min por IP; el Excel decía 3–20 | Coherencia con USR-01 | Aprobada |
 | F2-D28 | El retador no puede aceptar su propio reto: 409 `CANNOT_ACCEPT_OWN_CONTRACT` | CRUD CON-06 ("no puede aceptar su propio reto", respuestas 200/402/409) | Aprobada |
+| F2-D29 | Jurados al pasar a `voting`: al azar entre miembros activos, sin retador ni ejecutor, `settings.jurors` (3 por defecto); 48 h para votar | Constitución §6.5 y backlog ID 87/88 | Aprobada |
+| F2-D30 | Consenso sobre jurados asignados (`votos de un lado / jurados ≥ consenso`); si todos votan sin consenso, vence el plazo o no hay jurados, decide un admin (VOT-04) | Constitución §6.5; simplifica el quórum para la evaluación | Aprobada |
+| F2-D31 | Cierre transaccional: `fulfilled` → `bond_release` al que aceptó + compromiso retador→ejecutor + racha; `cheating` → `bond_forfeit` al retador + `cheated` | Backlog ID 99/100, Constitución §6.6 y CLARIFICACION (libro inmutable) | Aprobada |
+| F2-D32 | Avisos dentro de la app (colección `notifications`, TTL 90 días) como mejor esfuerzo; push FCM queda para después | Backlog ID 69 ("primero aviso dentro de la app") e ID 143 | Aprobada |
+| F2-D33 | Muro de la Fama = retos `fulfilled` con fotos/clips aprobados; resumen y resultado de votación sin caché | Backlog ID 132; exactitud del estado de votación | Aprobada |
+| F2-D34 | Flujo Git con ramas `feature/*` y Pull Request a `main`; el pipeline prueba los PR y solo despliega al fusionar en `main` | Instrucción del PO (buenas prácticas en GitHub) | Aprobada |
 
 ### 2.1 Registro de aprobación de la Fase 2
 
@@ -215,6 +221,8 @@ Las preguntas Q-007, Q-012 y Q-019 a Q-021 siguen abiertas; no bloquean los siet
 | 5 | `POST /api/v1/contracts` | CON-01 | Implementado y probado localmente |
 | 6 | `POST /api/v1/contracts/{id}/evidence` | EVI-02 | Implementado y probado localmente |
 | 7 | `GET /api/v1/tournaments` | TOR-02/TOR-03 | Implementado y probado localmente |
+
+**Jurado, puntos, compromisos, avisos y fama (v0.6.0, 2026-11-04):** EVI-03, VOT-01 a VOT-05, PTS-01, PTS-02, COM-01, COM-03, COM-04, NOT-01 a NOT-03 y ACH-01. Nuevas colecciones `votes`, `commitments` y `notifications`; pruebas en `IntegrationTest/JuryFlowTests.cs` (cumplido, trampa, empate y acceso ajeno). 50 pruebas de integración/seguridad/contrato en verde.
 
 **Endpoints sociales (v0.5.0, 2026-11-04):** USR-02 `GET /users/me`, USR-03 `PATCH /users/me`, USR-06 `GET /users/check-nickname`, GRP-02 `GET /groups`, GRP-03 `GET /groups/{id}`, MEM-01 `POST /groups/join`, MEM-02 `GET /groups/{id}/members`, CON-02 `GET /groups/{gid}/contracts`, CON-03 `GET /contracts/{id}`, CON-06 `POST /contracts/{id}/accept`, CON-07 `POST /contracts/{id}/reject`. Implementados con expediente en `specs/`, OpenAPI y pruebas (`IntegrationTest/SocialFlowTests.cs`, `SecurityTest`); 31 pruebas de integración/seguridad/contrato en verde. Nueva colección `points_ledger` con índices `ux_points_ledger_ref_type_user` e `ix_points_ledger_user_group_date`.
 
@@ -335,6 +343,7 @@ cd deploy/terraform && terraform fmt -check -recursive && terraform validate
 | 2026-10-30 | 0.1.1 | Verificación de restore, build, API y auditoría de dependencias; paquetes endurecidos sin CVEs altas | Agente OpenCode |
 | 2026-11-02 | 0.2.0 | Fase 2: siete endpoints, auth/grupos/contratos/evidencias/torneos, moderación, S3, OpenAPI, Docker/Terraform y 42 pruebas en verde | Agente OpenCode |
 | 2026-11-02 | 0.3.0 | Terraform AWS completo en `deploy/terraform`, pipeline `backend-ci-cd.yml`, pruebas funcionales en los 7 proyectos y moderación antes de S3; 49 pruebas en verde y 1 omitida | Agente OpenCode |
+| 2026-11-04 | 0.6.0 | 15 endpoints de jurado, votación con cierre transaccional de fianza, puntos (saldo y ranking), compromisos, avisos en la app y Muro de la Fama; decisiones F2-D29 a F2-D34; flujo de ramas y PR | Claude / PO David |
 | 2026-11-04 | 0.5.0 | 11 endpoints: perfil (ver/editar/apodo libre), mis grupos, detalle, unirse con código, miembros, tablero de retos, detalle de reto, aceptar con fianza transaccional y `points_ledger`, rechazar; caché por versiones; decisiones F2-D23 a F2-D28 | Claude / PO David |
 | 2026-11-04 | 0.4.2 | Política de moderación de imágenes para videojuegos (F2-D22) con pruebas unitarias; configurable en `Moderation:Image` | Claude / PO David |
 | 2026-11-04 | 0.4.1 | Q-017 y Q-018 resueltas con CLARIFICACION: `voting` con la primera evidencia y auto-reto prohibido; specs, OpenAPI y pruebas actualizadas; documentación alineada a costo cero | Claude / PO David |

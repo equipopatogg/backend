@@ -17,6 +17,8 @@ public interface IGroupMemberRepository
         int limit,
         ObjectId? cursor,
         CancellationToken cancellationToken);
+    /// <summary>Miembros activos ordenados por saldo descendente (PTS-02).</summary>
+    Task<IReadOnlyList<GroupMember>> ListRankingAsync(ObjectId groupId, int limit, CancellationToken cancellationToken);
     Task CreateAsync(GroupMember member, CancellationToken cancellationToken);
     Task UpdateNickLowerAsync(ObjectId userId, string nickLower, CancellationToken cancellationToken);
 }
