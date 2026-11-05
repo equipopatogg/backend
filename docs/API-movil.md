@@ -1,6 +1,6 @@
 # API PactoGG — guía para el equipo Móvil
 
-**Actualizado:** 2026-11-04 (v0.5.0: 19 endpoints, 21 rutas contando alias) · **Contrato vinculante:** [`api/openapi.yaml`](../api/openapi.yaml) (ábrelo en <https://editor.swagger.io> → File → Import file).
+**Actualizado:** 2026-11-04 (v0.6.0: 34 endpoints, 36 rutas contando alias) · **Contrato vinculante:** [`api/openapi.yaml`](../api/openapi.yaml) (ábrelo en <https://editor.swagger.io> → File → Import file).
 
 ## 1. Direcciones
 
@@ -54,6 +54,21 @@
 | CON-03 | `GET /api/v1/contracts/{id}` | Sí | — | `200` reto con `accepted_by`, `evidence_count`, `version`… |
 | CON-06 | `POST /api/v1/contracts/{id}/accept` | Sí | sin cuerpo, o `{ "version": n }` | `200` reto `in_progress` + `my_points` (saldo tras la fianza); `402 INSUFFICIENT_POINTS`; `403 NOT_CONTRACT_TARGET`; `409 CANNOT_ACCEPT_OWN_CONTRACT` / `INVALID_CONTRACT_STATE` |
 | CON-07 | `POST /api/v1/contracts/{id}/reject` | Sí | sin cuerpo, o `{ "version": n }` | `200` reto `cancelled` con `closed_reason: "rejected"`; solo el retado; `409` si ya no está `open` |
+| EVI-03 | `GET /api/v1/contracts/{id}/evidence` | Sí | — | `200` evidencias aprobadas con `url` (CDN para fotos) |
+| VOT-01 | `GET /api/v1/me/votes/pending` | Sí | `limit`, `cursor` | `200` retos que me toca votar (`contract`, `voting_ends_at`) |
+| VOT-02 | `PUT /api/v1/contracts/{id}/votes` | Sí | `vote` (`legit`\|`cheat`), `comment?` (≤140) | `200 { status, votes_cast, jurors_assigned, needs_admin }`; `403 NOT_JUROR`; `409 ALREADY_VOTED` |
+| VOT-03 | `GET /api/v1/contracts/{id}/votes/summary` | Sí | — | `200` cuántos votaron/faltan, `i_am_juror`, `i_voted`, `admin_can_resolve` |
+| VOT-04 | `POST /api/v1/contracts/{id}/votes/resolve` | Sí (admin) | `outcome` (`fulfilled`\|`cheating`) | `200` resultado; `403 NOT_GROUP_ADMIN`; `409 VOTING_NOT_FINISHED` |
+| VOT-05 | `GET /api/v1/contracts/{id}/result` | Sí | — | `200` resultado con votos revelados y `bond_movement`; `409` si sigue abierto |
+| PTS-01 | `GET /api/v1/groups/{gid}/points/me` | Sí | `type?`, `limit`, `cursor` | `200 { balance, movements[] }` |
+| PTS-02 | `GET /api/v1/groups/{gid}/points/ranking` | Sí | `limit` | `200` lista con `position`, `nickname`, `points_balance` |
+| COM-01 | `GET /api/v1/groups/{gid}/commitments` | Sí | `role` (`debo`\|`me-deben`), `status?`, `limit`, `cursor` | `200` compromisos con `debtor`, `creditor`, `description` |
+| COM-03 | `POST /api/v1/commitments/{id}/complete` | Sí (acreedor) | — | `200` `completed`; `409 INVALID_COMMITMENT_STATE` |
+| COM-04 | `POST /api/v1/commitments/{id}/request-complete` | Sí (deudor) | — | `200` `completion_requested` |
+| NOT-01 | `GET /api/v1/notifications` | Sí | `unread?`, `limit`, `cursor` | `200` avisos; `meta.unread_count` para el globito |
+| NOT-02 | `PATCH /api/v1/notifications/{id}/read` | Sí | — | `200` aviso con `read: true` |
+| NOT-03 | `POST /api/v1/notifications/read-all` | Sí | — | `200 { updated }` |
+| ACH-01 | `GET /api/v1/groups/{gid}/fame` | Sí | `limit`, `cursor` | `200` retos cumplidos con `executor`, `photos[]`, `links[]` |
 
 Dominios de enlace permitidos: youtube.com, youtu.be, twitch.tv, clips.twitch.tv, medal.tv, streamable.com (HTTPS obligatorio).
 
@@ -67,7 +82,7 @@ curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
 
 ## 6. Lo que todavía NO existe
 
-Editar/cancelar retos, jurado y votos, historial de puntos (`/points/me`), compromisos, crear torneos y partidas, notificaciones y dispositivos (FCM), contrato por voz con IA, reportes, eliminar cuenta, login con Google y verificación de correo. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
+Editar/cancelar retos, Muro de la Vergüenza, push (FCM), crear torneos y partidas,  contrato por voz con IA, reportes, eliminar cuenta, login con Google y verificación de correo. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
 
 ## 7. Reglas que la app debe respetar
 
@@ -77,5 +92,8 @@ Editar/cancelar retos, jurado y votos, historial de puntos (`/points/me`), compr
 - No puedes retarte a ti mismo: `422 INVALID_TARGET`.
 - Estados de un reto: `open` → `in_progress` (al aceptarlo; se descuenta la fianza) → `voting` (primera evidencia) → `fulfilled` / `cheating`; también `expired` y `cancelled`. Para un reto a todo el grupo, cualquiera menos el retador puede aceptarlo; si es a una persona, solo esa persona acepta o rechaza.
 - Muestra el saldo de `my_points` y deshabilita "Aceptar" si es menor que `bond_required` (el backend igual responde `402`).
+- **Jurado:** al subir la primera evidencia el reto pasa a `voting` y se eligen jurados al azar (3 por defecto, nunca el retador ni quien cumple). Con 3 jurados, 2 votos iguales cierran la votación. Si queda empate decide un admin.
+- **Al cerrar:** `fulfilled` devuelve la fianza a quien aceptó y crea un compromiso (el retador le debe la recompensa); `cheating` pasa la fianza al retador. Refresca `points/me` y `commitments` después de votar.
+- **Avisos:** consulta `GET /notifications?unread=true` al abrir la app (y cada cierto tiempo) para el globito; los tipos vienen en `type` (`contract_received`, `contract_accepted`, `vote_requested`, `vote_tie`, `contract_resolved`, `commitment_completion_requested`, `commitment_completed`). Push nativo todavía no.
 - Las listas pueden tardar hasta 30–60 s en reflejar cambios de **otras** personas (caché); tus propias acciones se ven al instante.
 - Moderación de fotos: se aceptan capturas de juego con armas, sangre o explosiones; se rechazan desnudos, símbolos de odio, contenido perturbador y gore real (`422 CONTENT_REJECTED` con `details.labels`). Muestra un aviso claro y deja elegir otra foto.

@@ -12,7 +12,10 @@ using Pactogg.Api.Modules.Evidence.Abstractions;
 using EvidenceEntity = Pactogg.Api.Modules.Evidence.Domain.Evidence;
 using ModerationRecordEntity = Pactogg.Api.Modules.Evidence.Domain.ModerationRecord;
 using Pactogg.Api.Modules.Evidence.Dtos;
+using System.Security.Cryptography;
+using Pactogg.Api.Modules.Groups;
 using Pactogg.Api.Modules.Groups.Abstractions;
+using Pactogg.Api.Modules.Notifications;
 
 namespace Pactogg.Api.Modules.Evidence;
 
@@ -45,6 +48,9 @@ public sealed class EvidenceService
     private readonly IAuditService _audit;
     private readonly EvidenceOptions _options;
     private readonly ICacheService _cache;
+    private readonly IGroupRepository _groups;
+    private readonly GroupAccess _access;
+    private readonly NotificationService _notifications;
 
     public EvidenceService(
         IContractRepository contracts,
@@ -54,9 +60,15 @@ public sealed class EvidenceService
         IObjectStorage storage,
         IAuditService audit,
         IOptions<EvidenceOptions> options,
-        ICacheService cache)
+        ICacheService cache,
+        IGroupRepository groups,
+        GroupAccess access,
+        NotificationService notifications)
     {
         _cache = cache;
+        _groups = groups;
+        _access = access;
+        _notifications = notifications;
         _contracts = contracts;
         _evidence = evidence;
         _members = members;
@@ -168,7 +180,7 @@ public sealed class EvidenceService
             await _evidence.CreateAsync(evidence, cancellationToken);
             if (reserved.Status != "voting")
             {
-                await _contracts.MarkVotingAsync(contract.Id, cancellationToken);
+                await StartVotingAsync(reserved, evidence.UserId, cancellationToken);
             }
         }
         catch
@@ -180,6 +192,59 @@ public sealed class EvidenceService
         await _audit.AppendAsync("evidence.created", userId, "evidence", evidence.Id, contract.GroupId, new { contract_id = contract.Id.ToString(), type = "photo" }, cancellationToken);
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
         return ToResponse(evidence);
+    }
+
+    /// <summary>EVI-03: evidencias del reto con URL del CDN; solo miembros del grupo.</summary>
+    public async Task<IReadOnlyList<EvidenceResponse>> ListAsync(ObjectId userId, string contractId, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(contractId, out var id))
+        {
+            throw ApiException.NotFound("El contrato no existe.");
+        }
+
+        var contract = await _contracts.GetByIdAsync(id, cancellationToken)
+            ?? throw ApiException.NotFound("El contrato no existe.");
+        await _access.RequireMemberAsync(userId, contract.GroupId, cancellationToken);
+
+        var items = await _evidence.ListByContractIdsAsync([contract.Id], cancellationToken);
+        var responses = new List<EvidenceResponse>(items.Count);
+        foreach (var item in items.Where(x => x.Moderation.Status == "approved"))
+        {
+            var url = item.Type == "photo" && !string.IsNullOrWhiteSpace(item.ObjectKey)
+                ? await _storage.GetReadUrlAsync(item.ObjectKey, TimeSpan.FromMinutes(15), cancellationToken)
+                : item.Url;
+            responses.Add(ToResponse(item, url));
+        }
+
+        return responses;
+    }
+
+    /// <summary>
+    /// Primera evidencia: el reto pasa a voting con jurados al azar (ni el retador ni quien lo cumple),
+    /// tantos como indique el grupo (por defecto 3) y 48 h para votar. Avisa a los jurados.
+    /// </summary>
+    private async Task StartVotingAsync(Contract contract, ObjectId uploaderId, CancellationToken cancellationToken)
+    {
+        var group = await _groups.GetByIdAsync(contract.GroupId, cancellationToken);
+        var wanted = Math.Max(1, group?.Settings.Jurors ?? 3);
+        var executor = contract.AcceptedBy ?? contract.TargetId ?? uploaderId;
+        var (members, _) = await _members.ListByGroupAsync(contract.GroupId, null, 50, null, cancellationToken);
+        var eligible = members
+            .Select(x => x.UserId)
+            .Where(x => x != contract.ChallengerId && x != executor)
+            .ToArray();
+        RandomNumberGenerator.Shuffle(eligible.AsSpan());
+        var jurors = eligible.Take(wanted).ToList();
+
+        await _contracts.MarkVotingAsync(contract.Id, executor, jurors, DateTime.UtcNow.AddHours(48), cancellationToken);
+        await _notifications.NotifyAsync(
+            jurors,
+            "vote_requested",
+            "Te toca ser jurado",
+            $"{contract.Game}: {contract.Condition}. ¿Legítimo o trampa?",
+            contract.GroupId,
+            contract.Id,
+            cancellationToken: cancellationToken);
     }
 
     private async Task<Contract> GetContractAsync(ObjectId userId, string contractId, CancellationToken cancellationToken)
@@ -234,7 +299,7 @@ public sealed class EvidenceService
             await _evidence.CreateAsync(evidence, cancellationToken);
             if (reserved.Status != "voting")
             {
-                await _contracts.MarkVotingAsync(contract.Id, cancellationToken);
+                await StartVotingAsync(reserved, evidence.UserId, cancellationToken);
             }
         }
         catch
@@ -270,13 +335,13 @@ public sealed class EvidenceService
         return "other";
     }
 
-    private static EvidenceResponse ToResponse(EvidenceEntity evidence) => new()
+    private static EvidenceResponse ToResponse(EvidenceEntity evidence, string? url = null) => new()
     {
         Id = evidence.Id.ToString(),
         ContractId = evidence.ContractId.ToString(),
         UserId = evidence.UserId.ToString(),
         Type = evidence.Type,
-        Url = evidence.Url,
+        Url = url ?? evidence.Url,
         Provider = evidence.Provider,
         ObjectKey = evidence.ObjectKey,
         Moderation = new ModerationResponse

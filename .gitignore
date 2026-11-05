@@ -52,3 +52,6 @@ Thumbs.db
 
 # Sesiones de agentes (pueden contener secretos)
 session-*.md
+
+# Copias temporales de la app de Claude
+Claude outputs/

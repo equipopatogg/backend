@@ -108,6 +108,22 @@ resource "aws_iam_openid_connect_provider" "github" {
   tags = { Name = "${local.name_prefix}-github-oidc" }
 }
 
+locals {
+  # GitHub emite el "sub" en formato clásico (owner/repo) o, en repos nuevos, con IDs
+  # inmutables (owner@ID/repo@ID). Se aceptan ambos, sin comodines.
+  github_repo_refs = compact([
+    var.github_repo,
+    var.github_repo_with_ids
+  ])
+
+  github_oidc_subjects = flatten([
+    for repo in local.github_repo_refs : [
+      "repo:${repo}:ref:refs/heads/${var.github_branch}",
+      "repo:${repo}:environment:${var.github_environment}"
+    ]
+  ])
+}
+
 resource "aws_iam_role" "github_actions" {
   name = "${local.name_prefix}-github-actions-role"
 
@@ -124,10 +140,7 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = [
-            "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}",
-            "repo:${var.github_repo}:environment:${var.github_environment}"
-          ]
+          "token.actions.githubusercontent.com:sub" = local.github_oidc_subjects
         }
       }
     }]

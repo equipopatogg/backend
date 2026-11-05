@@ -15,7 +15,24 @@ public interface IContractRepository
         CancellationToken cancellationToken);
     Task<Contract?> TryAttachEvidenceAsync(ObjectId id, ObjectId userId, DateTime now, int maxEvidence, CancellationToken cancellationToken);
     Task DecrementEvidenceAsync(ObjectId id, CancellationToken cancellationToken);
-    Task MarkVotingAsync(ObjectId id, CancellationToken cancellationToken);
+    /// <summary>Pasa a voting (si no lo estaba), fija quién ejecuta el reto, los jurados y el fin de la votación.</summary>
+    Task MarkVotingAsync(ObjectId id, ObjectId executorId, IReadOnlyList<ObjectId> jurors, DateTime votingEndsAt, CancellationToken cancellationToken);
+
+    /// <summary>VOT-02: registra un voto en el contador del contrato (solo jurados que no han votado, estado voting).</summary>
+    Task<Contract?> TryRegisterVoteAsync(ObjectId id, ObjectId jurorId, bool legit, DateTime now, CancellationToken cancellationToken);
+
+    /// <summary>Retos en voting donde el usuario es jurado y aún no vota (VOT-01).</summary>
+    Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListPendingVotesAsync(ObjectId jurorId, int limit, ObjectId? cursor, CancellationToken cancellationToken);
+
+    /// <summary>Retos cumplidos del grupo, del más reciente al más antiguo (Muro de la Fama).</summary>
+    Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListFulfilledAsync(ObjectId groupId, int limit, ObjectId? cursor, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cierra la votación en una transacción: voting → fulfilled|cheating, mueve la fianza
+    /// (bond_release al ejecutor o bond_forfeit al retador), crea el compromiso si se cumplió y actualiza estadísticas.
+    /// Null si el reto ya no estaba en voting.
+    /// </summary>
+    Task<Contract?> ResolveAsync(ObjectId id, string outcome, string resolvedBy, DateTime now, CancellationToken cancellationToken);
 
     /// <summary>
     /// CON-06 en una sola transacción: open → in_progress (con versión esperada), descuenta la fianza

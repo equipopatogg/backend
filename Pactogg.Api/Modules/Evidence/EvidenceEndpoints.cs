@@ -95,6 +95,14 @@ public static class EvidenceEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapGet("/{id}/evidence", async (string id, EvidenceService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.ListAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("ListEvidence")
+            .Produces<IReadOnlyList<EvidenceResponse>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return app;
     }
 }

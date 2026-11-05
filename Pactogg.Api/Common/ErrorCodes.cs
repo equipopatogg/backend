@@ -25,6 +25,12 @@ public static class ErrorCodes
     public const string InsufficientPoints = "INSUFFICIENT_POINTS";
     public const string AlreadyMember = "ALREADY_MEMBER";
     public const string GroupFull = "GROUP_FULL";
+    public const string NotJuror = "NOT_JUROR";
+    public const string AlreadyVoted = "ALREADY_VOTED";
+    public const string VotingNotFinished = "VOTING_NOT_FINISHED";
+    public const string NotGroupAdmin = "NOT_GROUP_ADMIN";
+    public const string NotCommitmentParty = "NOT_COMMITMENT_PARTY";
+    public const string InvalidCommitmentState = "INVALID_COMMITMENT_STATE";
     public const string CannotAcceptOwnContract = "CANNOT_ACCEPT_OWN_CONTRACT";
     public const string ModerationUnavailable = "MODERATION_UNAVAILABLE";
     public const string StorageUnavailable = "STORAGE_UNAVAILABLE";

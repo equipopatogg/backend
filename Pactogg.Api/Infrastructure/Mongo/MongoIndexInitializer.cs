@@ -67,7 +67,10 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Name = "ix_group_members_user_status" }),
             new CreateIndexModel<Modules.Groups.Domain.GroupMember>(
                 Builders<Modules.Groups.Domain.GroupMember>.IndexKeys.Ascending(x => x.GroupId).Ascending(x => x.NickLower),
-                new CreateIndexOptions { Name = "ix_group_members_group_nick" })
+                new CreateIndexOptions { Name = "ix_group_members_group_nick" }),
+            new CreateIndexModel<Modules.Groups.Domain.GroupMember>(
+                Builders<Modules.Groups.Domain.GroupMember>.IndexKeys.Ascending(x => x.GroupId).Descending(x => x.PointsBalance),
+                new CreateIndexOptions { Name = "ix_group_members_group_points" })
         ], cancellationToken);
 
         await _context.PointsLedger.Indexes.CreateManyAsync(
@@ -117,5 +120,43 @@ public sealed class MongoIndexInitializer : BackgroundService
                     .Ascending(x => x.ScheduledAt),
                 new CreateIndexOptions { Name = "ix_tournaments_group_status_scheduled" }),
             cancellationToken: cancellationToken);
+
+        await _context.Votes.Indexes.CreateOneAsync(
+            new CreateIndexModel<Modules.Votes.Domain.Vote>(
+                Builders<Modules.Votes.Domain.Vote>.IndexKeys.Ascending(x => x.ContractId).Ascending(x => x.JurorId),
+                new CreateIndexOptions { Unique = true, Name = "ux_votes_contract_juror" }),
+            cancellationToken: cancellationToken);
+
+        await _context.Contracts.Indexes.CreateOneAsync(
+            new CreateIndexModel<Modules.Contracts.Domain.Contract>(
+                Builders<Modules.Contracts.Domain.Contract>.IndexKeys.Ascending(x => x.Jurors).Ascending(x => x.Status),
+                new CreateIndexOptions { Name = "ix_contracts_jurors_status" }),
+            cancellationToken: cancellationToken);
+
+        await _context.Commitments.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Commitments.Domain.Commitment>(
+                Builders<Modules.Commitments.Domain.Commitment>.IndexKeys.Ascending(x => x.ContractId),
+                new CreateIndexOptions { Unique = true, Name = "ux_commitments_contract" }),
+            new CreateIndexModel<Modules.Commitments.Domain.Commitment>(
+                Builders<Modules.Commitments.Domain.Commitment>.IndexKeys
+                    .Ascending(x => x.GroupId).Ascending(x => x.DebtorId).Ascending(x => x.Status),
+                new CreateIndexOptions { Name = "ix_commitments_group_debtor_status" }),
+            new CreateIndexModel<Modules.Commitments.Domain.Commitment>(
+                Builders<Modules.Commitments.Domain.Commitment>.IndexKeys
+                    .Ascending(x => x.GroupId).Ascending(x => x.CreditorId).Ascending(x => x.Status),
+                new CreateIndexOptions { Name = "ix_commitments_group_creditor_status" })
+        ], cancellationToken);
+
+        await _context.Notifications.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Notifications.Domain.Notification>(
+                Builders<Modules.Notifications.Domain.Notification>.IndexKeys
+                    .Ascending(x => x.UserId).Ascending(x => x.ReadAt).Descending(x => x.Id),
+                new CreateIndexOptions { Name = "ix_notifications_user_read" }),
+            new CreateIndexModel<Modules.Notifications.Domain.Notification>(
+                Builders<Modules.Notifications.Domain.Notification>.IndexKeys.Ascending(x => x.CreatedAt),
+                new CreateIndexOptions { Name = "ttl_notifications_90d", ExpireAfter = TimeSpan.FromDays(90) })
+        ], cancellationToken);
     }
 }

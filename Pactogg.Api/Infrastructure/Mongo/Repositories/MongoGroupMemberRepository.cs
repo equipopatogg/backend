@@ -65,6 +65,13 @@ public sealed class MongoGroupMemberRepository : IGroupMemberRepository
         return (items.Take(limit).ToList(), items.Count > limit);
     }
 
+    public async Task<IReadOnlyList<GroupMember>> ListRankingAsync(ObjectId groupId, int limit, CancellationToken cancellationToken) =>
+        await _context.GroupMembers.Find(x => x.GroupId == groupId && x.Status == "active")
+            .SortByDescending(x => x.PointsBalance)
+            .ThenBy(x => x.JoinedAt)
+            .Limit(limit)
+            .ToListAsync(cancellationToken);
+
     public async Task CreateAsync(GroupMember member, CancellationToken cancellationToken)
     {
         try
