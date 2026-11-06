@@ -143,12 +143,9 @@ public sealed class AuthService
     /// </summary>
     public async Task<(SessionResponse Session, bool Created)> GoogleAsync(GoogleAuthRequest request, CancellationToken cancellationToken)
     {
+        // El validador solo devuelve identidades con firma válida y correo verificado por Google.
         var identity = await _google.ValidateAsync(request.IdToken, cancellationToken)
-            ?? throw ApiException.Unauthorized(ErrorCodes.InvalidGoogleToken, "El token de Google no es válido.");
-        if (!identity.EmailVerified)
-        {
-            throw ApiException.Unauthorized(ErrorCodes.InvalidGoogleToken, "Google no ha verificado ese correo.");
-        }
+            ?? throw ApiException.Unauthorized(ErrorCodes.InvalidGoogleToken, "El token de Google no es válido o el correo no está verificado.");
 
         var now = DateTime.UtcNow;
         var user = await _users.GetByGoogleSubAsync(identity.Subject, cancellationToken);

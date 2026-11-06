@@ -8,11 +8,12 @@ using Pactogg.Api.Infrastructure.Options;
 
 namespace Pactogg.Api.Infrastructure.Security;
 
-public sealed record GoogleIdentity(string Subject, string Email, bool EmailVerified, string? Name);
+/// <summary>Identidad de Google ya validada: firma, emisor, audiencia, vigencia y correo verificado por Google.</summary>
+public sealed record GoogleIdentity(string Subject, string Email, string? Name);
 
 public interface IGoogleTokenValidator
 {
-    /// <summary>Valida el ID token de Google (firma, emisor, audiencia y vigencia). Null si no es válido.</summary>
+    /// <summary>Valida el ID token de Google (firma, emisor, audiencia, vigencia y email_verified). Null si algo no cumple.</summary>
     Task<GoogleIdentity?> ValidateAsync(string idToken, CancellationToken cancellationToken);
 }
 
@@ -78,8 +79,9 @@ public sealed class GoogleTokenValidator : IGoogleTokenValidator
             && (flag is true || string.Equals(flag?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
         var name = claims.TryGetValue("name", out var display) ? display?.ToString() : null;
 
-        return string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(email)
+        // Un correo que Google no verificó se trata igual que un token inválido.
+        return !verified || string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(email)
             ? null
-            : new GoogleIdentity(subject, email.Trim().ToLowerInvariant(), verified, name);
+            : new GoogleIdentity(subject, email.Trim().ToLowerInvariant(), name);
     }
 }

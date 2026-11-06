@@ -1174,13 +1174,13 @@ public sealed class FakeGoogleTokenValidator : Pactogg.Api.Infrastructure.Securi
     public Task<Pactogg.Api.Infrastructure.Security.GoogleIdentity?> ValidateAsync(string idToken, CancellationToken cancellationToken)
     {
         var parts = idToken.Split('|');
-        if (parts.Length != 4 || parts[0] != "google")
+        if (parts.Length != 4 || parts[0] != "google" || parts[3] != "true")
         {
             return Task.FromResult<Pactogg.Api.Infrastructure.Security.GoogleIdentity?>(null);
         }
 
         return Task.FromResult<Pactogg.Api.Infrastructure.Security.GoogleIdentity?>(
-            new Pactogg.Api.Infrastructure.Security.GoogleIdentity(parts[1], parts[2], parts[3] == "true", "Jugador"));
+            new Pactogg.Api.Infrastructure.Security.GoogleIdentity(parts[1], parts[2], "Jugador"));
     }
 }
 

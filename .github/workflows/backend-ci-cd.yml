@@ -25,6 +25,10 @@ env:
   TRIVY_VERSION: "0.69.3"
   SEMGREP_VERSION: "1.95.0"
   DOCKLE_VERSION: "v0.4.14"
+  GITLEAKS_VERSION: "v8.21.2"
+  CHECKOV_VERSION: "3.2.334"
+  CYCLONEDX_VERSION: "4.1.0"
+  ZAP_IMAGE: "ghcr.io/zaproxy/zaproxy:2.15.0"
 
 jobs:
   build-test:
@@ -33,13 +37,13 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'nuget.config', 'global.json') }}
@@ -72,7 +76,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-results
           path: TestResults
@@ -88,15 +92,15 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: github/codeql-action/init@v4
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: csharp
 
-      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
 
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
 
   semgrep:
     name: sast-semgrep
@@ -107,7 +111,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Reglas de C#, secretos y OWASP. Falla solo con hallazgos de severidad ERROR.
       - name: Semgrep scan
@@ -123,7 +127,7 @@ jobs:
 
       - name: Upload Semgrep SARIF
         if: always() && hashFiles('semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -137,9 +141,9 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -170,9 +174,102 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always() && hashFiles('trivy-fs.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-fs.sarif
+
+      # SBOM CycloneDX (DESC_BACK 12, CLARIFICACION cadena de suministro).
+      - name: SBOM CycloneDX
+        run: |
+          dotnet tool install --global CycloneDX --version "${CYCLONEDX_VERSION}"
+          dotnet CycloneDX Pactogg.Api/Pactogg.Api.csproj --output sbom --filename pactogg-api.cdx.json --json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom/pactogg-api.cdx.json
+          retention-days: 30
+
+  # Escaneo de secretos en todo el historial con Gitleaks (imagen fijada; sin licencia de la acción).
+  secrets:
+    name: secrets-gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION} \
+            git --redact --verbose --exit-code 1 /repo
+
+  # Escaneo de IaC (Terraform y Dockerfile) con Checkov. Falla con hallazgos no justificados.
+  iac:
+    name: iac-checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Checkov
+        run: |
+          pip install --quiet "checkov==${CHECKOV_VERSION}"
+          checkov --directory deploy --file Dockerfile --framework terraform dockerfile \
+            --config-file .checkov.yaml --output cli --output sarif --output-file-path console,checkov.sarif
+
+      - name: Upload Checkov SARIF
+        if: always() && hashFiles('checkov.sarif/results_sarif.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          sarif_file: checkov.sarif/results_sarif.sarif
+
+  # SonarCloud (DESC_BACK 12). Se activa al configurar SONAR_TOKEN y las variables SONAR_ORGANIZATION / SONAR_PROJECT_KEY.
+  sonarcloud:
+    name: sonarcloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Analyze
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SONAR_TOKEN}" ] || [ -z "${SONAR_ORGANIZATION}" ] || [ -z "${SONAR_PROJECT_KEY}" ]; then
+            echo "::notice::SonarCloud no configurado (falta SONAR_TOKEN, SONAR_ORGANIZATION o SONAR_PROJECT_KEY); se omite."
+            exit 0
+          fi
+          dotnet tool install --global dotnet-sonarscanner --version 9.0.2
+          dotnet sonarscanner begin /k:"${SONAR_PROJECT_KEY}" /o:"${SONAR_ORGANIZATION}" \
+            /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="${SONAR_TOKEN}" \
+            /d:sonar.qualitygate.wait=true /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+          dotnet build Pactogg.sln --configuration Release
+          dotnet test Pactogg.sln --configuration Release --no-build --collect:"XPlat Code Coverage;Format=opencover"
+          dotnet sonarscanner end /d:sonar.token="${SONAR_TOKEN}"
 
 
   terraform:
@@ -186,9 +283,9 @@ jobs:
         working-directory: deploy/terraform
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: "1.10.5"
 
@@ -202,10 +299,10 @@ jobs:
         run: terraform validate -no-color
 
   # Compuerta de calidad: un solo check obligatorio para proteger main.
-  # Pasa solo si pruebas, CodeQL, Semgrep, dependencias/Trivy y Terraform pasaron.
+  # Pasa solo si pruebas, CodeQL, Semgrep, SonarCloud, dependencias/SBOM, Gitleaks, Checkov y Terraform pasaron.
   quality-gate:
     name: quality-gate
-    needs: [build-test, sast, semgrep, sca, terraform]
+    needs: [build-test, sast, semgrep, sca, secrets, iac, sonarcloud, terraform]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -239,7 +336,7 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build image
         run: docker build -t "pactogg-api:${GITHUB_SHA}" .
@@ -262,13 +359,13 @@ jobs:
 
       - name: Upload image SARIF
         if: always() && hashFiles('trivy-image.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-image.sarif
 
       - name: Configure AWS credentials
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -296,7 +393,7 @@ jobs:
 
       - name: Login to Docker Hub
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -324,7 +421,7 @@ jobs:
 
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -364,6 +461,8 @@ jobs:
   smoke:
     name: smoke-test
     needs: deploy
+    outputs:
+      base_url: ${{ steps.health.outputs.base_url }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
@@ -374,12 +473,13 @@ jobs:
 
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Health check
+        id: health
         shell: bash
         run: |
           set -euo pipefail
@@ -391,6 +491,7 @@ jobs:
             base="https://${ip//./-}.sslip.io"
           fi
           base="${base%/}"
+          echo "base_url=${base}" >> "$GITHUB_OUTPUT"
           echo "Probando ${base}/health"
           for _ in $(seq 1 30); do
             if curl --fail --silent --show-error --max-time 10 "${base}/health"; then
@@ -400,3 +501,36 @@ jobs:
           done
           echo "La API no respondió al health check." >&2
           exit 1
+
+  # DAST con OWASP ZAP contra el ambiente desplegado, guiado por el contrato OpenAPI (DESC_BACK 12).
+  zap-dast:
+    name: zap-dast
+    needs: smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: ZAP API scan
+        env:
+          TARGET: ${{ needs.smoke.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p zap && cp api/openapi.yaml zap/openapi.yaml && chmod -R 777 zap
+          docker run --rm -v "$PWD/zap:/zap/wrk:rw" "${ZAP_IMAGE}" zap-api-scan.py \
+            -t /zap/wrk/openapi.yaml -f openapi -O "${TARGET}" \
+            -r zap-report.html -J zap-report.json -I || status=$?
+          # -I: las advertencias no rompen el pipeline; los FAIL sí.
+          exit "${status:-0}"
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zap-report
+          path: zap/zap-report.*
+          retention-days: 30
