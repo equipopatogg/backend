@@ -1,5 +1,7 @@
 # SCA continuo (CLARIFICACION: "SCA con dotnet list package --vulnerable, Dependabot y CycloneDX").
 # Las PR de Dependabot pasan por la misma compuerta de calidad antes de poder fusionarse.
+# Solo versiones menores y parches: los cambios mayores (.NET 10, proveedor AWS 6, acciones nuevas)
+# rompen compatibilidad y se hacen a mano con su propia rama y pruebas.
 version: 2
 updates:
   - package-ecosystem: nuget
@@ -16,6 +18,9 @@ updates:
       testing:
         patterns: ["xunit*", "FluentAssertions", "Moq", "coverlet*", "Testcontainers*", "Microsoft.NET.Test.Sdk"]
     labels: ["dependencies"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -26,15 +31,24 @@ updates:
       timezone: America/Mexico_City
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
     labels: ["dependencies", "docker"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: terraform
     directory: "/deploy/terraform"
     schedule:
       interval: monthly
     labels: ["dependencies", "infra"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
