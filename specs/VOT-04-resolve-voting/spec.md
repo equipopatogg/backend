@@ -35,3 +35,10 @@ El administrador resuelve un empate, una votación vencida o un reto sin jurados
 | Miembro no admin → 403; admin tras empate → 200 | IntegrationTest/JuryFlowTests.cs |
 
 401 sin token: `SecurityTest/AuthorizationTests.cs`.
+
+## Cambio 0.7.0
+
+- Solo un admin que **no sea parte** (`403 ADMIN_IS_PARTY`) y solo en la fase del administrador (empate, sin quórum tras la extensión o sin jurados).
+- Si no decide en 48 h el reto queda `cancelled` (`closed_reason = admin_timeout`), se devuelve la fianza y no cambia la reputación.
+- `Idempotency-Key` obligatoria.
+- Pruebas: `JuryFlowTests.TiedVote_IsResolvedOnlyByNeutralAdmin`.

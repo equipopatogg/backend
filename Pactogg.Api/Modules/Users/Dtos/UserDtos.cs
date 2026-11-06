@@ -29,7 +29,35 @@ public sealed class ProfileResponse
     public bool EmailVerified { get; init; }
     public UserStatsResponse Stats { get; init; } = new();
     public int GroupsCount { get; init; }
+    public NotificationPreferencesDto NotificationPreferences { get; init; } = new();
     public DateTime CreatedAt { get; init; }
+}
+
+/// <summary>USR-05: lo que ven otros miembros. Nunca incluye el correo.</summary>
+public sealed class PublicProfileResponse
+{
+    public string Id { get; init; } = string.Empty;
+    public string Nickname { get; init; } = string.Empty;
+    public string AvatarId { get; init; } = "default";
+    public UserStatsResponse Stats { get; init; } = new();
+    public DateTime CreatedAt { get; init; }
+}
+
+/// <summary>DEV-03: tipos de aviso push. En PATCH los campos omitidos no cambian.</summary>
+public sealed class NotificationPreferencesDto
+{
+    public bool? Retos { get; set; }
+    public bool? Votos { get; set; }
+    public bool? Torneos { get; set; }
+    public bool? Compromisos { get; set; }
+
+    public static NotificationPreferencesDto From(Pactogg.Api.Modules.Auth.Domain.NotificationPreferences preferences) => new()
+    {
+        Retos = preferences.Retos,
+        Votos = preferences.Votos,
+        Torneos = preferences.Torneos,
+        Compromisos = preferences.Compromisos
+    };
 }
 
 public sealed class NicknameAvailabilityResponse

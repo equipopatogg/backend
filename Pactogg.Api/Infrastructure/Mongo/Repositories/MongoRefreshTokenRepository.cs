@@ -27,6 +27,12 @@ public sealed class MongoRefreshTokenRepository : IRefreshTokenRepository
             Builders<RefreshToken>.Update.Set(x => x.RevokedAt, at),
             cancellationToken: cancellationToken);
 
+    public Task MarkRotatedAsync(ObjectId id, DateTime at, CancellationToken cancellationToken) =>
+        _context.RefreshTokens.UpdateOneAsync(
+            x => x.Id == id && x.RevokedAt == null,
+            Builders<RefreshToken>.Update.Set(x => x.RevokedAt, at).Set(x => x.Rotated, true),
+            cancellationToken: cancellationToken);
+
     public Task RevokeAllForUserAsync(ObjectId userId, DateTime at, CancellationToken cancellationToken) =>
         _context.RefreshTokens.UpdateManyAsync(
             x => x.UserId == userId && x.RevokedAt == null,

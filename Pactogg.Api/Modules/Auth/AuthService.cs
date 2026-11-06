@@ -24,6 +24,8 @@ public sealed class AuthService
     private readonly IAuditService _audit;
     private readonly AuthOptions _authOptions;
     private readonly JwtOptions _jwtOptions;
+    private readonly IGoogleTokenValidator _google;
+    private readonly AccountService _account;
 
     public AuthService(
         IUserRepository users,
@@ -34,8 +36,12 @@ public sealed class AuthService
         ITokenRevocationStore revocations,
         IAuditService audit,
         IOptions<AuthOptions> authOptions,
-        IOptions<JwtOptions> jwtOptions)
+        IOptions<JwtOptions> jwtOptions,
+        IGoogleTokenValidator google,
+        AccountService account)
     {
+        _account = account;
+        _google = google;
         _users = users;
         _refreshTokens = refreshTokens;
         _passwordHasher = passwordHasher;
@@ -95,6 +101,8 @@ public sealed class AuthService
 
         await _users.CreateAsync(user, cancellationToken);
         var session = await CreateSessionAsync(user, request.DeviceId, cancellationToken);
+        // AUTH-05: el correo de verificación sale al registrarse (best-effort; se puede reenviar).
+        await _account.SendVerificationAsync(user, cancellationToken);
         await _audit.AppendAsync("user.registered", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
         return session;
     }
@@ -128,10 +136,98 @@ public sealed class AuthService
         return session;
     }
 
+    /// <summary>
+    /// AUTH-02 / ID 12: entra con Google o crea la cuenta. Si el correo ya existe y Google lo verificó,
+    /// vincula la cuenta. Una cuenta nueva exige apodo y aceptar la privacidad vigente.
+    /// Devuelve (sesión, creada).
+    /// </summary>
+    public async Task<(SessionResponse Session, bool Created)> GoogleAsync(GoogleAuthRequest request, CancellationToken cancellationToken)
+    {
+        // El validador solo devuelve identidades con firma válida y correo verificado por Google.
+        var identity = await _google.ValidateAsync(request.IdToken, cancellationToken)
+            ?? throw ApiException.Unauthorized(ErrorCodes.InvalidGoogleToken, "El token de Google no es válido o el correo no está verificado.");
+
+        var now = DateTime.UtcNow;
+        var user = await _users.GetByGoogleSubAsync(identity.Subject, cancellationToken);
+        if (user is null)
+        {
+            user = await _users.GetByEmailAsync(identity.Email, cancellationToken);
+            if (user is not null)
+            {
+                await _users.LinkGoogleAsync(user.Id, identity.Subject, now, cancellationToken);
+                await _audit.AppendAsync("auth.google_linked", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
+            }
+        }
+
+        if (user is not null)
+        {
+            if (user.Status != "active")
+            {
+                throw ApiException.Unauthorized(ErrorCodes.Unauthorized, "La cuenta no está activa.");
+            }
+
+            await _users.UpdateLastLoginAsync(user.Id, now, cancellationToken);
+            var existing = await CreateSessionAsync(user, request.DeviceId, cancellationToken);
+            await _audit.AppendAsync("auth.login_google", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
+            return (existing, false);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Nickname))
+        {
+            throw ApiException.Unprocessable(
+                ErrorCodes.NicknameRequired,
+                "Es tu primera vez: elige un apodo.",
+                new { email = identity.Email, suggested_name = identity.Name });
+        }
+
+        if (request.AcceptPrivacy != true
+            || !string.Equals(request.PrivacyVersion, _authOptions.CurrentPrivacyVersion, StringComparison.Ordinal))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Debes aceptar la política de privacidad vigente.");
+        }
+
+        var nickname = request.Nickname.Trim();
+        if (await _users.GetByNicknameAsync(nickname.ToLowerInvariant(), cancellationToken) is not null)
+        {
+            throw ApiException.Conflict(ErrorCodes.NicknameAlreadyExists, "El apodo ya está en uso.");
+        }
+
+        var created = new User
+        {
+            Id = ObjectId.GenerateNewId(),
+            Email = identity.Email,
+            Nickname = nickname,
+            NicknameLower = nickname.ToLowerInvariant(),
+            // Sin contraseña: el hash vacío nunca valida en /auth/login.
+            PasswordHash = string.Empty,
+            GoogleSub = identity.Subject,
+            EmailVerified = true,
+            Stats = new UserStats(),
+            Consent = new ConsentRecord { Version = _authOptions.CurrentPrivacyVersion, AcceptedAt = now },
+            Status = "active",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        await _users.CreateAsync(created, cancellationToken);
+        var session = await CreateSessionAsync(created, request.DeviceId, cancellationToken);
+        await _audit.AppendAsync("user.registered_google", created.Id, "user", created.Id, null, new { user_id = created.Id.ToString() }, cancellationToken);
+        return (session, true);
+    }
+
     public async Task<SessionResponse> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken)
     {
         var hash = _tokens.HashRefreshToken(request.RefreshToken);
         var stored = await _refreshTokens.GetByHashAsync(hash, cancellationToken);
+        if (stored is not null && stored.RevokedAt is not null && stored.Rotated)
+        {
+            // CLARIFICACION #10: un refresh ya rotado que vuelve a llegar se considera robado.
+            // Se revocan todas las sesiones del usuario y debe iniciar sesión de nuevo.
+            await _refreshTokens.RevokeAllForUserAsync(stored.UserId, DateTime.UtcNow, cancellationToken);
+            await _audit.AppendAsync("auth.refresh_reuse_detected", stored.UserId, "refresh_token", stored.Id, null, new { user_id = stored.UserId.ToString() }, cancellationToken);
+            throw ApiException.Unauthorized();
+        }
+
         if (stored is null || stored.RevokedAt is not null || stored.ExpiresAt <= DateTime.UtcNow)
         {
             throw ApiException.Unauthorized();
@@ -143,7 +239,7 @@ public sealed class AuthService
             throw ApiException.Unauthorized();
         }
 
-        await _refreshTokens.RevokeAsync(stored.Id, DateTime.UtcNow, cancellationToken);
+        await _refreshTokens.MarkRotatedAsync(stored.Id, DateTime.UtcNow, cancellationToken);
         var session = await CreateSessionAsync(user, request.DeviceId ?? stored.DeviceId, cancellationToken);
         await _audit.AppendAsync("auth.refresh", user.Id, "refresh_token", stored.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
         return session;
@@ -178,6 +274,10 @@ public sealed class AuthService
 
         await _audit.AppendAsync("auth.logout", userId, "user", userId, null, new { all = request?.All == true }, cancellationToken);
     }
+
+    /// <summary>Sesión nueva después de cambiar la contraseña (las anteriores ya se revocaron).</summary>
+    public Task<SessionResponse> IssueSessionAsync(User user, string? deviceId, CancellationToken cancellationToken) =>
+        CreateSessionAsync(user, deviceId, cancellationToken);
 
     private async Task<SessionResponse> CreateSessionAsync(User user, string? deviceId, CancellationToken cancellationToken)
     {

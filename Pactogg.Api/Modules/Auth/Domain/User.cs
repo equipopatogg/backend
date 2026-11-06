@@ -21,6 +21,10 @@ public sealed class User
     [BsonElement("nickname_lower")]
     public string NicknameLower { get; set; } = string.Empty;
 
+    /// <summary>"sub" de la cuenta de Google vinculada (ID 12). Null si solo usa correo y contraseña.</summary>
+    [BsonElement("google_sub")]
+    public string? GoogleSub { get; set; }
+
     [BsonElement("avatar_id")]
     public string AvatarId { get; set; } = "default";
 
@@ -32,6 +36,13 @@ public sealed class User
 
     [BsonElement("consent")]
     public ConsentRecord Consent { get; set; } = new();
+
+    /// <summary>DEV-03: qué tipos de push quiere recibir (CLARIFICACION #13).</summary>
+    [BsonElement("notification_preferences")]
+    public NotificationPreferences NotificationPreferences { get; set; } = new();
+
+    [BsonElement("password_changed_at")]
+    public DateTime? PasswordChangedAt { get; set; }
 
     [BsonElement("status")]
     public string Status { get; set; } = "active";
@@ -76,4 +87,20 @@ public sealed class ConsentRecord
 
     [BsonElement("accepted_at")]
     public DateTime AcceptedAt { get; set; }
+}
+
+[BsonIgnoreExtraElements]
+public sealed class NotificationPreferences
+{
+    [BsonElement("retos")]
+    public bool Retos { get; set; } = true;
+
+    [BsonElement("votos")]
+    public bool Votos { get; set; } = true;
+
+    [BsonElement("torneos")]
+    public bool Torneos { get; set; } = true;
+
+    [BsonElement("compromisos")]
+    public bool Compromisos { get; set; } = true;
 }

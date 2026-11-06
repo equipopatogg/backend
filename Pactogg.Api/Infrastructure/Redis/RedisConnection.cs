@@ -75,6 +75,33 @@ public sealed class RedisConnection : IDisposable
 
     public void RemoveFallback(string key) => _fallback.TryRemove(key, out _);
 
+    public bool TryAddFallback(string key, string value, TimeSpan ttl)
+    {
+        var expiresAt = DateTime.UtcNow.Add(ttl);
+        while (true)
+        {
+            if (_fallback.TryAdd(key, (value, expiresAt)))
+            {
+                return true;
+            }
+
+            if (!_fallback.TryGetValue(key, out var current))
+            {
+                continue;
+            }
+
+            if (current.ExpiresAt > DateTime.UtcNow)
+            {
+                return false;
+            }
+
+            if (_fallback.TryUpdate(key, (value, expiresAt), current))
+            {
+                return true;
+            }
+        }
+    }
+
     public void Dispose()
     {
         if (_multiplexer.IsValueCreated)

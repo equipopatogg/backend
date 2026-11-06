@@ -73,7 +73,22 @@ public sealed class Contract
     [BsonElement("voting_ends_at")]
     public DateTime? VotingEndsAt { get; set; }
 
-    /// <summary>jury o admin.</summary>
+    /// <summary>La votación ya se extendió 24 h una vez (sin quórum al vencer).</summary>
+    [BsonElement("voting_extended")]
+    public bool VotingExtended { get; set; }
+
+    /// <summary>Se asignó el jurado adicional de desempate (solo una vez).</summary>
+    [BsonElement("extra_juror_assigned")]
+    public bool ExtraJurorAssigned { get; set; }
+
+    [BsonElement("vote_reminder_sent")]
+    public bool VoteReminderSent { get; set; }
+
+    /// <summary>Plazo para que decida el administrador; si vence, el reto se cancela y se devuelve la fianza.</summary>
+    [BsonElement("admin_deadline_at")]
+    public DateTime? AdminDeadlineAt { get; set; }
+
+    /// <summary>jury, admin o system.</summary>
     [BsonElement("resolved_by")]
     public string? ResolvedBy { get; set; }
 

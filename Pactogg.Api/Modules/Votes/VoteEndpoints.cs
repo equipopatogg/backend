@@ -1,3 +1,4 @@
+using Pactogg.Api.Common.Middleware;
 using Pactogg.Api.Common;
 using Pactogg.Api.Common.Extensions;
 using Pactogg.Api.Modules.Votes.Dtos;
@@ -28,6 +29,7 @@ public static class VoteEndpoints
         contracts.MapPut("/votes", async (string id, CastVoteRequest request, VoteService service, HttpContext context, CancellationToken cancellationToken) =>
                 ApiResults.Ok(await service.CastAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
             .AddEndpointFilter<ValidationFilter<CastVoteRequest>>()
+            .RequireIdempotencyKey()
             .WithName("CastVote")
             .Produces<CastVoteResponse>()
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -41,6 +43,7 @@ public static class VoteEndpoints
         contracts.MapPost("/votes/resolve", async (string id, ResolveVotingRequest request, VoteService service, HttpContext context, CancellationToken cancellationToken) =>
                 ApiResults.Ok(await service.AdminResolveAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
             .AddEndpointFilter<ValidationFilter<ResolveVotingRequest>>()
+            .RequireIdempotencyKey()
             .WithName("ResolveVoting")
             .Produces<ContractResultResponse>()
             .ProducesProblem(StatusCodes.Status403Forbidden)

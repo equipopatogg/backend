@@ -7,6 +7,7 @@ using Pactogg.Api.Modules.Auth.Abstractions;
 using Pactogg.Api.Modules.Contracts;
 using Pactogg.Api.Modules.Contracts.Abstractions;
 using Pactogg.Api.Modules.Contracts.Domain;
+using Pactogg.Api.Modules.Contracts.Lifecycle;
 using Pactogg.Api.Modules.Groups;
 using Pactogg.Api.Modules.Groups.Abstractions;
 using Pactogg.Api.Modules.Groups.Domain;
@@ -18,9 +19,10 @@ using Pactogg.Api.Modules.Votes.Dtos;
 namespace Pactogg.Api.Modules.Votes;
 
 /// <summary>
-/// VOT-01..05. Consenso: un lado gana cuando sus votos alcanzan el consenso del grupo (66 % por defecto)
-/// sobre los jurados asignados. Si todos votan sin consenso, la votación vence o no hubo jurados,
-/// decide el administrador.
+/// VOT-01..05. Consenso (CLARIFICACION #79–84): 66 % de los votos emitidos con quórum de la mitad de los
+/// jurados asignados. Al vencer sin quórum se extiende 24 h una vez; en empate decide un administrador que
+/// no sea parte (o un jurado adicional una sola vez); si el administrador no decide en 48 h, se cancela
+/// con devolución de fianza. Los plazos los cierra <see cref="ContractLifecycleService"/>.
 /// </summary>
 public sealed class VoteService
 {
@@ -33,6 +35,7 @@ public sealed class VoteService
     private readonly NotificationService _notifications;
     private readonly IAuditService _audit;
     private readonly ICacheService _cache;
+    private readonly ContractLifecycleService _lifecycle;
 
     public VoteService(
         IContractRepository contracts,
@@ -43,7 +46,8 @@ public sealed class VoteService
         IModerationService moderation,
         NotificationService notifications,
         IAuditService audit,
-        ICacheService cache)
+        ICacheService cache,
+        ContractLifecycleService lifecycle)
     {
         _contracts = contracts;
         _votes = votes;
@@ -54,6 +58,7 @@ public sealed class VoteService
         _notifications = notifications;
         _audit = audit;
         _cache = cache;
+        _lifecycle = lifecycle;
     }
 
     /// <summary>VOT-01: retos donde soy jurado y aún no voto.</summary>
@@ -78,9 +83,15 @@ public sealed class VoteService
     public async Task<CastVoteResponse> CastAsync(ObjectId userId, string contractId, CastVoteRequest request, CancellationToken cancellationToken)
     {
         var (contract, group, _) = await LoadAsync(userId, contractId, cancellationToken);
+        contract = await _lifecycle.ProcessVotingAsync(contract, DateTime.UtcNow, cancellationToken);
         if (contract.Status != "voting")
         {
             throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto no está en votación.");
+        }
+
+        if (contract.AdminDeadlineAt is not null)
+        {
+            throw ApiException.Conflict(ErrorCodes.VotingClosed, "La votación del jurado cerró; ahora decide el administrador.");
         }
 
         if (!contract.Jurors.Contains(userId))
@@ -122,16 +133,17 @@ public sealed class VoteService
 
         var status = updated.Status;
         var needsAdmin = false;
-        var outcome = Evaluate(updated, group.Settings.Consensus);
-        if (outcome is not null)
+        var decision = VotingRules.Decide(updated.LegitVotes, updated.CheatVotes, updated.Jurors.Count, group.Settings.Consensus, final: false);
+        if (decision is VotingDecision.Fulfilled or VotingDecision.Cheating)
         {
-            var resolved = await ResolveAndNotifyAsync(updated, outcome, "jury", null, cancellationToken);
+            var resolved = await _lifecycle.ResolveAsync(updated, decision == VotingDecision.Fulfilled ? "fulfilled" : "cheating", "jury", null, cancellationToken);
             status = resolved?.Status ?? status;
         }
-        else if (updated.Voters.Count >= updated.Jurors.Count)
+        else if (decision == VotingDecision.Tie)
         {
-            needsAdmin = true;
-            await NotifyAdminsAsync(updated, cancellationToken);
+            var afterTie = await _lifecycle.HandleTieAsync(updated, now, cancellationToken);
+            needsAdmin = afterTie.AdminDeadlineAt is not null;
+            updated = afterTie;
         }
 
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
@@ -149,7 +161,8 @@ public sealed class VoteService
     /// <summary>VOT-03: cuántos votaron y cuántos faltan; el sentido de los votos solo se revela al cerrar.</summary>
     public async Task<VoteSummaryResponse> SummaryAsync(ObjectId userId, string contractId, CancellationToken cancellationToken)
     {
-        var (contract, _, _) = await LoadAsync(userId, contractId, cancellationToken);
+        var (contract, _, member) = await LoadAsync(userId, contractId, cancellationToken);
+        contract = await _lifecycle.ProcessVotingAsync(contract, DateTime.UtcNow, cancellationToken);
         var closed = contract.Status is "fulfilled" or "cheating";
         return new VoteSummaryResponse
         {
@@ -161,7 +174,9 @@ public sealed class VoteService
             VotingEndsAt = contract.VotingEndsAt,
             IAmJuror = contract.Jurors.Contains(userId),
             IVoted = contract.Voters.Contains(userId),
-            AdminCanResolve = contract.Status == "voting" && AdminMayResolve(contract, DateTime.UtcNow),
+            AdminCanResolve = member.Role == "admin" && AdminMayResolve(contract, userId, DateTime.UtcNow),
+            VotingExtended = contract.VotingExtended,
+            AdminDeadlineAt = contract.AdminDeadlineAt,
             LegitVotes = closed ? contract.LegitVotes : null,
             CheatVotes = closed ? contract.CheatVotes : null
         };
@@ -176,17 +191,23 @@ public sealed class VoteService
             throw ApiException.Forbidden(ErrorCodes.NotGroupAdmin, "Solo un administrador del grupo puede resolver.");
         }
 
+        if (ContractLifecycleService.Parties(contract).Contains(userId))
+        {
+            throw ApiException.Forbidden(ErrorCodes.AdminIsParty, "Eres parte del reto; debe decidir otro administrador.");
+        }
+
+        contract = await _lifecycle.ProcessVotingAsync(contract, DateTime.UtcNow, cancellationToken);
         if (contract.Status != "voting")
         {
             throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto no está en votación.");
         }
 
-        if (!AdminMayResolve(contract, DateTime.UtcNow))
+        if (!AdminMayResolve(contract, userId, DateTime.UtcNow))
         {
-            throw ApiException.Conflict(ErrorCodes.VotingNotFinished, "La votación sigue en curso; espera a que voten los jurados o a que venza.");
+            throw ApiException.Conflict(ErrorCodes.VotingNotFinished, "La votación sigue en curso; el administrador decide solo en empate o si vence sin quórum.");
         }
 
-        var resolved = await ResolveAndNotifyAsync(contract, request.Outcome, "admin", userId, cancellationToken)
+        var resolved = await _lifecycle.ResolveAsync(contract, request.Outcome, "admin", userId, cancellationToken)
             ?? throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto cambió; recarga e intenta de nuevo.");
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
         return await BuildResultAsync(resolved, cancellationToken);
@@ -204,92 +225,18 @@ public sealed class VoteService
         return await BuildResultAsync(contract, cancellationToken);
     }
 
-    internal static string? Evaluate(Contract contract, double consensus)
-    {
-        var jurors = contract.Jurors.Count;
-        if (jurors == 0)
-        {
-            return null;
-        }
-
-        if (contract.LegitVotes / (double)jurors >= consensus)
-        {
-            return "fulfilled";
-        }
-
-        if (contract.CheatVotes / (double)jurors >= consensus)
-        {
-            return "cheating";
-        }
-
-        return null;
-    }
-
-    private static bool AdminMayResolve(Contract contract, DateTime now) =>
-        contract.Jurors.Count == 0
-        || contract.Voters.Count >= contract.Jurors.Count
-        || (contract.VotingEndsAt is DateTime ends && ends <= now);
-
-    private async Task<Contract?> ResolveAndNotifyAsync(Contract contract, string outcome, string resolvedBy, ObjectId? actor, CancellationToken cancellationToken)
-    {
-        var resolved = await _contracts.ResolveAsync(contract.Id, outcome, resolvedBy, DateTime.UtcNow, cancellationToken);
-        if (resolved is null)
-        {
-            return null;
-        }
-
-        await _audit.AppendAsync(
-            "contract.resolved",
-            actor,
-            "contract",
-            resolved.Id,
-            resolved.GroupId,
-            new { contract_id = resolved.Id.ToString(), outcome, resolved_by = resolvedBy },
-            cancellationToken);
-
-        var parties = new List<ObjectId> { resolved.ChallengerId };
-        var executor = resolved.ExecutorId ?? resolved.AcceptedBy ?? resolved.TargetId;
-        if (executor is ObjectId executorId)
-        {
-            parties.Add(executorId);
-            await _cache.BumpVersionAsync(CacheExtensions.UserScope(executorId), cancellationToken);
-        }
-
-        await _cache.BumpVersionAsync(CacheExtensions.UserScope(resolved.ChallengerId), cancellationToken);
-        var fulfilled = outcome == "fulfilled";
-        await _notifications.NotifyAsync(
-            parties,
-            "contract_resolved",
-            fulfilled ? "¡Reto cumplido!" : "Reto marcado como trampa",
-            fulfilled
-                ? $"{resolved.Game}: el jurado lo validó. Recompensa: {resolved.Reward}"
-                : $"{resolved.Game}: el jurado detectó trampa; la fianza pasa al retador.",
-            resolved.GroupId,
-            resolved.Id,
-            cancellationToken: cancellationToken);
-        return resolved;
-    }
-
-    private async Task NotifyAdminsAsync(Contract contract, CancellationToken cancellationToken)
-    {
-        var (members, _) = await _members.ListByGroupAsync(contract.GroupId, null, 50, null, cancellationToken);
-        await _notifications.NotifyAsync(
-            members.Where(x => x.Role == "admin").Select(x => x.UserId),
-            "vote_tie",
-            "Votación sin consenso",
-            $"{contract.Game}: los jurados no se pusieron de acuerdo. Decide como administrador.",
-            contract.GroupId,
-            contract.Id,
-            cancellationToken: cancellationToken);
-    }
+    private static bool AdminMayResolve(Contract contract, ObjectId adminId, DateTime now) =>
+        contract.Status == "voting"
+        && !ContractLifecycleService.Parties(contract).Contains(adminId)
+        && contract.AdminDeadlineAt is DateTime deadline
+        && deadline > now;
 
     private async Task<ContractResultResponse> BuildResultAsync(Contract contract, CancellationToken cancellationToken)
     {
         var votes = await _votes.ListByContractAsync(contract.Id, cancellationToken);
-        var users = (await _users.ListByIdsAsync(votes.Select(x => x.JurorId).ToArray(), cancellationToken)).ToDictionary(x => x.Id);
         var bondMovement = contract.AcceptedBy is null || contract.BondRequired == 0
             ? "none"
-            : contract.Status == "fulfilled" ? "bond_release" : "bond_forfeit";
+            : contract.Status == "fulfilled" ? "bond_release_and_reward" : "bond_forfeit";
 
         return new ContractResultResponse
         {
@@ -304,13 +251,12 @@ public sealed class VoteService
             ChallengerId = contract.ChallengerId.ToString(),
             ExecutorId = (contract.ExecutorId ?? contract.AcceptedBy ?? contract.TargetId)?.ToString(),
             Reward = contract.Reward,
-            Votes = votes.Select(vote => new RevealedVoteResponse
+            // Se ordena por sentido y texto (no por fecha) para no delatar el orden de emisión.
+            Votes = votes.OrderBy(vote => vote.Value, StringComparer.Ordinal).ThenBy(vote => vote.Comment, StringComparer.Ordinal).Select(vote => new RevealedVoteResponse
             {
-                JurorId = vote.JurorId.ToString(),
-                Nickname = users.TryGetValue(vote.JurorId, out var user) ? user.Nickname : "jurado",
                 Vote = vote.Value,
                 Comment = vote.Comment,
-                CreatedAt = vote.CreatedAt
+                CreatedAt = vote.CreatedAt.Date
             }).ToList()
         };
     }

@@ -38,10 +38,20 @@ public sealed class GroupService
         _authOptions = authOptions.Value;
     }
 
+    /// <summary>CLARIFICACION #5: en cuentas de correo, la verificación es obligatoria para crear o unirse a un grupo.</summary>
+    private void RequireVerified(Pactogg.Api.Modules.Auth.Domain.User user)
+    {
+        if (_authOptions.RequireVerifiedEmail && !user.EmailVerified)
+        {
+            throw ApiException.Forbidden(ErrorCodes.EmailNotVerified, "Verifica tu correo para crear o unirte a un grupo.");
+        }
+    }
+
     public async Task<GroupResponse> CreateAsync(ObjectId userId, CreateGroupRequest request, CancellationToken cancellationToken)
     {
         var user = await _users.GetByIdAsync(userId, cancellationToken)
             ?? throw ApiException.Unauthorized();
+        RequireVerified(user);
 
         var activeGroups = await _members.CountActiveGroupsAsync(userId, cancellationToken);
         if (activeGroups >= _authOptions.MaxGroupsPerUser)
@@ -137,6 +147,7 @@ public sealed class GroupService
     {
         var code = request.Code.Trim().ToUpperInvariant();
         var user = await _users.GetByIdAsync(userId, cancellationToken) ?? throw ApiException.Unauthorized();
+        RequireVerified(user);
         var group = await _groups.GetByInviteCodeAsync(code, cancellationToken)
             ?? throw ApiException.NotFound("El código no existe o ya no está activo.");
 
@@ -265,14 +276,14 @@ public sealed class GroupService
         var consensus = request?.Consensus ?? 0.66;
         var bondOptions = request?.BondOptions ?? [25, 50, 100];
 
-        if (jurors is < 1 or > 9)
+        if (jurors is < 1 or > 7)
         {
-            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "El número de jurados debe estar entre 1 y 9.");
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "El número de jurados debe estar entre 1 y 7.");
         }
 
-        if (consensus is < 0.51 or > 1.0)
+        if (consensus is < 0.50 or > 1.0)
         {
-            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "El consenso debe estar entre 0.51 y 1.0.");
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "El consenso debe estar entre 0.50 y 1.0.");
         }
 
         if (bondOptions.Count is < 1 or > 5 || bondOptions.Any(value => value is < 10 or > 200) || bondOptions.Distinct().Count() != bondOptions.Count)

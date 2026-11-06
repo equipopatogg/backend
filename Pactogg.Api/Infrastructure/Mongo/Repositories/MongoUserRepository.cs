@@ -27,6 +27,16 @@ public sealed class MongoUserRepository : IUserRepository
         await _context.Users.Find(x => x.NicknameLower == nicknameLower && x.DeletedAt == null)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public async Task<User?> GetByGoogleSubAsync(string googleSub, CancellationToken cancellationToken) =>
+        await _context.Users.Find(x => x.GoogleSub == googleSub && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public Task LinkGoogleAsync(ObjectId id, string googleSub, DateTime at, CancellationToken cancellationToken) =>
+        _context.Users.UpdateOneAsync(
+            x => x.Id == id,
+            Builders<User>.Update.Set(x => x.GoogleSub, googleSub).Set(x => x.EmailVerified, true).Set(x => x.UpdatedAt, at),
+            cancellationToken: cancellationToken);
+
     public async Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0)
@@ -59,6 +69,36 @@ public sealed class MongoUserRepository : IUserRepository
             x => x.Id == id,
             Builders<User>.Update.Set(x => x.LastLoginAt, at).Set(x => x.UpdatedAt, at),
             cancellationToken: cancellationToken);
+
+    public Task SetEmailVerifiedAsync(ObjectId id, DateTime at, CancellationToken cancellationToken) =>
+        _context.Users.UpdateOneAsync(
+            x => x.Id == id,
+            Builders<User>.Update.Set(x => x.EmailVerified, true).Set(x => x.UpdatedAt, at),
+            cancellationToken: cancellationToken);
+
+    public Task UpdatePasswordAsync(ObjectId id, string passwordHash, DateTime at, CancellationToken cancellationToken) =>
+        _context.Users.UpdateOneAsync(
+            x => x.Id == id,
+            Builders<User>.Update
+                .Set(x => x.PasswordHash, passwordHash)
+                .Set(x => x.PasswordChangedAt, at)
+                .Set(x => x.UpdatedAt, at),
+            cancellationToken: cancellationToken);
+
+    public Task UpdateConsentAsync(ObjectId id, string version, DateTime at, CancellationToken cancellationToken) =>
+        _context.Users.UpdateOneAsync(
+            x => x.Id == id,
+            Builders<User>.Update
+                .Set(x => x.Consent, new ConsentRecord { Version = version, AcceptedAt = at })
+                .Set(x => x.UpdatedAt, at),
+            cancellationToken: cancellationToken);
+
+    public async Task<User?> UpdateNotificationPreferencesAsync(ObjectId id, NotificationPreferences preferences, DateTime at, CancellationToken cancellationToken) =>
+        await _context.Users.FindOneAndUpdateAsync(
+            Builders<User>.Filter.Where(x => x.Id == id && x.DeletedAt == null),
+            Builders<User>.Update.Set(x => x.NotificationPreferences, preferences).Set(x => x.UpdatedAt, at),
+            new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
 
     public async Task<User?> UpdateProfileAsync(
         ObjectId id,

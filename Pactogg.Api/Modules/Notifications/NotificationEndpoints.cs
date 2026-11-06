@@ -35,6 +35,15 @@ public static class NotificationEndpoints
             .WithName("MarkAllNotificationsRead")
             .Produces<ReadAllResponse>();
 
+        group.MapDelete("/{id}", async (string id, NotificationService service, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                await service.DeleteAsync(context.User.GetRequiredObjectId(), id, cancellationToken);
+                return Results.NoContent();
+            })
+            .WithName("DeleteNotification")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return app;
     }
 }

@@ -1,0 +1,40 @@
+# SCA continuo (CLARIFICACION: "SCA con dotnet list package --vulnerable, Dependabot y CycloneDX").
+# Las PR de Dependabot pasan por la misma compuerta de calidad antes de poder fusionarse.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Mexico_City
+    open-pull-requests-limit: 5
+    groups:
+      microsoft:
+        patterns: ["Microsoft.*", "System.*"]
+      testing:
+        patterns: ["xunit*", "FluentAssertions", "Moq", "coverlet*", "Testcontainers*", "Microsoft.NET.Test.Sdk"]
+    labels: ["dependencies"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Mexico_City
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: terraform
+    directory: "/deploy/terraform"
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "infra"]

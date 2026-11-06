@@ -52,3 +52,16 @@ Vacía el bucket de evidencias y ejecuta `terraform destroy`.
 ## Secretos
 
 El estado de Terraform contiene la URI de Mongo, la clave JWT y la contraseña de Redis. No se versiona (`*.tfstate` en `.gitignore`).
+
+
+## Crear y eliminar desde el pipeline
+
+El estado vive en S3 (`pactogg-tfstate-<cuenta>`), creado por `deploy/bootstrap` junto con el proveedor OIDC de GitHub y el rol `pactogg-github-terraform`. Esos tres recursos sobreviven a un `destroy`.
+
+1. Una sola vez, desde WSL: `bash scripts/bootstrap-terraform-pipeline.sh` (migra el estado local a S3 y configura los secretos si tienes `gh`).
+2. En GitHub: Environment `infra` con revisores obligatorios y los secretos `AWS_TERRAFORM_ROLE_ARN`, `MONGO_CONNECTION_STRING`, `JWT_SIGNING_KEY`.
+3. Actions → **infra** → Run workflow → `plan`, `apply` o `destroy` (escribiendo `DESTRUIR`).
+
+En local, después de la migración: `terraform init -backend-config=backend.hcl`.
+
+Al recrear, las Elastic IP cambian: agrega las nuevas IP a la lista de acceso de MongoDB Atlas y actualiza la URL de la API en la app.

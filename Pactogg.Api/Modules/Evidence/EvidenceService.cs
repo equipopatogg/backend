@@ -1,3 +1,5 @@
+using Pactogg.Api.Modules.Auth.Abstractions;
+using Pactogg.Api.Modules.Contracts.Lifecycle;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using Pactogg.Api.Common;
@@ -30,7 +32,6 @@ public sealed class EvidenceService
 
     // CLARIFICACION #30: la primera evidencia pasa el contrato a voting.
     // #59/#60: hasta 3 evidencias y se pueden agregar mientras no haya votos.
-    // TODO(VOT-02): bloquear nuevas evidencias en voting cuando exista el primer voto.
     private static readonly HashSet<string> ValidStates = new(StringComparer.OrdinalIgnoreCase)
     {
         "open",
@@ -52,6 +53,10 @@ public sealed class EvidenceService
     private readonly GroupAccess _access;
     private readonly NotificationService _notifications;
 
+    private readonly ContractLifecycleService _lifecycle;
+    private readonly IUserRepository _users;
+    private readonly AuthOptions _authOptions;
+
     public EvidenceService(
         IContractRepository contracts,
         IEvidenceRepository evidence,
@@ -63,8 +68,14 @@ public sealed class EvidenceService
         ICacheService cache,
         IGroupRepository groups,
         GroupAccess access,
-        NotificationService notifications)
+        NotificationService notifications,
+        ContractLifecycleService lifecycle,
+        IUserRepository users,
+        IOptions<AuthOptions> authOptions)
     {
+        _users = users;
+        _authOptions = authOptions.Value;
+        _lifecycle = lifecycle;
         _cache = cache;
         _groups = groups;
         _access = access;
@@ -233,10 +244,33 @@ public sealed class EvidenceService
             .Select(x => x.UserId)
             .Where(x => x != contract.ChallengerId && x != executor)
             .ToArray();
+        if (_authOptions.RequireVerifiedEmail && eligible.Length > 0)
+        {
+            // CLARIFICACION #223: solo miembros con correo verificado pueden ser jurado.
+            var verified = (await _users.ListByIdsAsync(eligible, cancellationToken))
+                .Where(x => x.EmailVerified && x.Status == "active")
+                .Select(x => x.Id)
+                .ToHashSet();
+            eligible = eligible.Where(verified.Contains).ToArray();
+        }
+
         RandomNumberGenerator.Shuffle(eligible.AsSpan());
         var jurors = eligible.Take(wanted).ToList();
 
-        await _contracts.MarkVotingAsync(contract.Id, executor, jurors, DateTime.UtcNow.AddHours(48), cancellationToken);
+        var now = DateTime.UtcNow;
+        await _contracts.MarkVotingAsync(contract.Id, executor, jurors, now.AddHours(_lifecycle.Options.VotingHours), cancellationToken);
+        if (jurors.Count == 0)
+        {
+            // Sin jurados elegibles (CLAR #75): decide directamente un administrador que no sea parte.
+            var voting = await _contracts.GetByIdAsync(contract.Id, cancellationToken);
+            if (voting is not null)
+            {
+                await _lifecycle.OpenAdminPhaseAsync(voting, now, cancellationToken);
+            }
+
+            return;
+        }
+
         await _notifications.NotifyAsync(
             jurors,
             "vote_requested",
@@ -260,6 +294,16 @@ public sealed class EvidenceService
         if (!ValidStates.Contains(contract.Status))
         {
             throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El contrato no admite evidencias en su estado actual.");
+        }
+
+        if (contract.Deadline <= DateTime.UtcNow && contract.Status is "open" or "in_progress")
+        {
+            throw ApiException.Conflict(ErrorCodes.InvalidContractState, "La fecha límite del reto ya venció.");
+        }
+
+        if (contract.Status == "voting" && (contract.Voters.Count > 0 || contract.AdminDeadlineAt is not null))
+        {
+            throw ApiException.Conflict(ErrorCodes.InvalidContractState, "Ya hay votos: el reto quedó congelado y no admite más evidencias.");
         }
 
         if (string.Equals(contract.TargetType, "member", StringComparison.OrdinalIgnoreCase))

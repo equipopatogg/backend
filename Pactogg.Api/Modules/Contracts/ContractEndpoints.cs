@@ -1,3 +1,4 @@
+using Pactogg.Api.Common.Middleware;
 using Pactogg.Api.Common;
 using Pactogg.Api.Common.Extensions;
 using Pactogg.Api.Modules.Contracts.Dtos;
@@ -48,6 +49,7 @@ public static class ContractEndpoints
                 return ApiResults.Ok(await service.AcceptAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken));
             })
             .RequireAuthorization()
+            .RequireIdempotencyKey()
             .WithName("AcceptContract")
             .Produces<ContractResponse>()
             .ProducesProblem(StatusCodes.Status402PaymentRequired)
@@ -66,6 +68,37 @@ public static class ContractEndpoints
             .RequireAuthorization()
             .WithName("RejectContract")
             .Produces<ContractResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPatch("/{id}", async (
+                string id,
+                UpdateContractRequest request,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.UpdateAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<UpdateContractRequest>>()
+            .WithName("UpdateContract")
+            .Produces<ContractResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapDelete("/{id}", async (
+                string id,
+                int? version,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            {
+                await service.CancelAsync(context.User.GetRequiredObjectId(), id, version, cancellationToken);
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .WithName("CancelContract")
+            .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 

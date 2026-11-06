@@ -16,3 +16,14 @@ deploy/terraform/*.tfstate*
 deploy/terraform/*.tfvars
 !deploy/terraform/*.tfvars.example
 **/*.trx
+# Secretos locales: nunca dentro de la imagen
+**/appsettings.*.local.json
+**/appsettings.Local.json
+session-*.md
+deploy/terraform/.env.secrets
+deploy/terraform/backend.hcl
+deploy/bootstrap/
+**/*.pem
+**/*.pfx
+**/*accessKeys*.csv
+Claude outputs/

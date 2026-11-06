@@ -12,10 +12,10 @@ public sealed class CreateGroupRequest
 
 public sealed class GroupSettingsRequest
 {
-    [Range(1, 9)]
+    [Range(1, 7)]
     public int Jurors { get; set; } = 3;
 
-    [Range(0.51, 1.0)]
+    [Range(0.50, 1.0)]
     public double Consensus { get; set; } = 0.66;
 
     public List<int>? BondOptions { get; set; }

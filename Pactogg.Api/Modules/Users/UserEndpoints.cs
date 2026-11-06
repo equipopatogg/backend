@@ -1,3 +1,5 @@
+using Pactogg.Api.Modules.Auth.Dtos;
+using Pactogg.Api.Modules.Auth;
 using Pactogg.Api.Common;
 using Pactogg.Api.Common.Extensions;
 using Pactogg.Api.Modules.Users.Dtos;
@@ -36,6 +38,39 @@ public static class UserEndpoints
             .Produces<NicknameAvailabilityResponse>()
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
+
+        group.MapGet("/{id}", async (string id, UserService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GetPublicAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("GetPublicProfile")
+            .Produces<PublicProfileResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/me/password", async (
+                ChangePasswordRequest request,
+                AccountService account,
+                AuthService auth,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            {
+                var user = await account.ChangePasswordAsync(context.User.GetRequiredObjectId(), request, cancellationToken);
+                return ApiResults.Ok(await auth.IssueSessionAsync(user, request.DeviceId, cancellationToken));
+            })
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<ChangePasswordRequest>>()
+            .WithName("ChangePassword")
+            .Produces<SessionResponse>()
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapPost("/me/consent", async (ConsentRequest request, AccountService account, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await account.AcceptConsentAsync(context.User.GetRequiredObjectId(), request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<ConsentRequest>>()
+            .WithName("AcceptConsent")
+            .Produces<ConsentResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         return app;
     }

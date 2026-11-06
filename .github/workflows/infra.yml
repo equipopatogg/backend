@@ -1,0 +1,206 @@
+name: infra
+
+# Crear y eliminar la infraestructura de AWS desde el pipeline (Terraform).
+# Solo manual (Actions -> infra -> Run workflow) y solo con aprobación del Environment "infra".
+#   plan    -> muestra los cambios
+#   apply   -> crea/actualiza todo, publica la imagen y verifica /health
+#   destroy -> borra todo (requiere escribir DESTRUIR); el estado y el rol de Terraform sobreviven
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción de Terraform"
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      confirm:
+        description: "Para destroy escribe DESTRUIR"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VERSION: "1.10.5"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_VAR_mongo_connection_string: ${{ secrets.MONGO_CONNECTION_STRING }}
+  TF_VAR_jwt_signing_key: ${{ secrets.JWT_SIGNING_KEY }}
+  TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'pactogg-evidence-bucket-us-east-1' }}
+  TF_VAR_create_github_oidc_provider: "false"
+
+jobs:
+  terraform:
+    name: terraform-${{ inputs.action }}
+    runs-on: ubuntu-latest
+    environment: infra
+    timeout-minutes: 45
+    outputs:
+      api_url: ${{ steps.outputs.outputs.api_url }}
+      ecr_url: ${{ steps.outputs.outputs.ecr_url }}
+    defaults:
+      run:
+        working-directory: deploy/terraform
+
+    steps:
+      - name: Guard destroy
+        if: inputs.action == 'destroy' && inputs.confirm != 'DESTRUIR'
+        working-directory: .
+        run: |
+          echo "Para destruir escribe DESTRUIR en el campo confirm." >&2
+          exit 1
+
+      - name: Check secrets
+        working-directory: .
+        run: |
+          [ -n "$TF_VAR_mongo_connection_string" ] || { echo "Falta el secreto MONGO_CONNECTION_STRING" >&2; exit 1; }
+          [ -n "$TF_VAR_jwt_signing_key" ] || { echo "Falta el secreto JWT_SIGNING_KEY" >&2; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Init (estado remoto en S3)
+        run: |
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          terraform init -backend-config="bucket=pactogg-tfstate-${account}" -backend-config="region=${AWS_REGION}"
+
+      - name: Format and validate
+        run: |
+          terraform fmt -check -recursive
+          terraform validate -no-color
+
+      - name: Plan
+        if: inputs.action != 'destroy'
+        run: |
+          terraform plan -no-color -out=tfplan | tee plan.txt
+          {
+            echo '### Plan de Terraform'
+            echo '```'
+            grep -E '^(Plan:|No changes)' plan.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        if: inputs.action == 'apply'
+        run: terraform apply -no-color tfplan
+
+      - name: Outputs
+        id: outputs
+        if: inputs.action == 'apply'
+        run: |
+          echo "api_url=$(terraform output -raw api_url)" >> "$GITHUB_OUTPUT"
+          echo "ecr_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Infraestructura creada'
+            echo "- API: $(terraform output -raw api_url)"
+            echo "- CDN: $(terraform output -raw cdn_base_url)"
+            echo "- Instancias: $(terraform output -json instance_ids)"
+            echo "- IP del gateway (permitir en Atlas): $(terraform output -raw gateway_public_ip)"
+            echo "- IP del worker (permitir en Atlas): $(terraform output -raw worker_public_ip)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Empty evidence bucket and ECR before destroy
+        if: inputs.action == 'destroy'
+        run: |
+          set -euo pipefail
+          bucket="$(terraform output -raw evidence_bucket 2>/dev/null || true)"
+          if [ -n "$bucket" ]; then
+            aws s3 rm "s3://${bucket}" --recursive || true
+          fi
+          repo="$(terraform output -raw ecr_repository_url 2>/dev/null | cut -d/ -f2 || true)"
+          if [ -n "$repo" ]; then
+            ids="$(aws ecr list-images --repository-name "$repo" --query 'imageIds[*]' --output json || echo '[]')"
+            if [ "$ids" != "[]" ]; then
+              aws ecr batch-delete-image --repository-name "$repo" --image-ids "$ids" >/dev/null
+            fi
+          fi
+
+      - name: Destroy
+        if: inputs.action == 'destroy'
+        run: |
+          terraform destroy -no-color -auto-approve
+          echo '### Infraestructura eliminada (el estado y el rol de Terraform se conservan)' >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: publish-and-smoke
+    needs: terraform
+    if: inputs.action == 'apply'
+    runs-on: ubuntu-latest
+    environment: infra
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build and push image
+        env:
+          ECR_URL: ${{ needs.terraform.outputs.ecr_url }}
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_URL%%/*}"
+          docker build -t "${ECR_URL}:${GITHUB_SHA}" -t "${ECR_URL}:latest" .
+          docker push "${ECR_URL}:${GITHUB_SHA}"
+          docker push "${ECR_URL}:latest"
+
+      - name: Redeploy on both instances
+        run: |
+          set -euo pipefail
+          ids="$(aws ec2 describe-instances \
+            --filters "Name=tag:Project,Values=pactogg" "Name=tag:Role,Values=api" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)"
+          [ -n "$ids" ] || { echo "No hay instancias" >&2; exit 1; }
+          # Espera a que el agente de SSM registre las instancias nuevas.
+          for id in $ids; do
+            for _ in $(seq 1 40); do
+              online="$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=${id}" \
+                --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
+              [ "$online" = "Online" ] && break
+              sleep 15
+            done
+          done
+          # shellcheck disable=SC2086
+          command_id="$(aws ssm send-command --document-name AWS-RunShellScript \
+            --instance-ids $ids --parameters 'commands=["sudo /opt/pactogg/redeploy.sh"]' \
+            --query Command.CommandId --output text)"
+          for id in $ids; do
+            aws ssm wait command-executed --command-id "$command_id" --instance-id "$id" || true
+            aws ssm get-command-invocation --command-id "$command_id" --instance-id "$id" --query Status --output text
+          done
+
+      - name: Health check
+        env:
+          API_URL: ${{ needs.terraform.outputs.api_url }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 40); do
+            if curl --fail --silent --show-error --max-time 10 "${API_URL%/}/health"; then
+              echo
+              echo "API arriba: ${API_URL}" | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "Recuerda: si la IP cambió, actualiza la URL en la app móvil y la lista de IPs de Atlas." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "La API no respondió /health (revisa que las IPs estén permitidas en Atlas)." >&2
+          exit 1

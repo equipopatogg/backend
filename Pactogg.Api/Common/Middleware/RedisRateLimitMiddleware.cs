@@ -30,7 +30,7 @@ public sealed class RedisRateLimitMiddleware
         }
 
         var policy = ResolvePolicy(context.Request.Path);
-        var identity = policy.Name is "login" or "register" or "nickname"
+        var identity = policy.Name is "login" or "register" or "nickname" or "account"
             ? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"
             : context.User.FindFirstValue("sub")
                 ?? context.Connection.RemoteIpAddress?.ToString()
@@ -61,9 +61,18 @@ public sealed class RedisRateLimitMiddleware
         }
 
         if (string.Equals(path.Value, "/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(path.Value, "/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path.Value, "/api/v1/auth/google", StringComparison.OrdinalIgnoreCase))
         {
             return ("login", _options.LoginPermitLimit, TimeSpan.FromSeconds(_options.LoginWindowSeconds));
+        }
+
+        // AUTH-05/06/07: correos y tokens de un solo uso, por IP (CRUD: 3 por hora en recuperación).
+        if (path.StartsWithSegments("/api/v1/auth/forgot-password", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/api/v1/auth/reset-password", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/api/v1/auth/verify-email", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("account", _options.AccountPermitLimit, TimeSpan.FromSeconds(_options.AccountWindowSeconds));
         }
 
         if (string.Equals(path.Value, "/api/v1/users/check-nickname", StringComparison.OrdinalIgnoreCase))

@@ -35,6 +35,24 @@ public sealed class LoginRequest
     public string? DeviceId { get; set; }
 }
 
+/// <summary>ID 12: entrar o registrarse con Google. Para una cuenta nueva se exige apodo y aceptar la privacidad (D-15).</summary>
+public sealed class GoogleAuthRequest
+{
+    [Required, StringLength(4096, MinimumLength = 20)]
+    public string IdToken { get; set; } = string.Empty;
+
+    [RegularExpression("^[A-Za-z0-9_.-]{3,24}$")]
+    public string? Nickname { get; set; }
+
+    public bool? AcceptPrivacy { get; set; }
+
+    [StringLength(32)]
+    public string? PrivacyVersion { get; set; }
+
+    [StringLength(128)]
+    public string? DeviceId { get; set; }
+}
+
 public sealed class LogoutRequest
 {
     public string? RefreshToken { get; set; }
@@ -66,4 +84,54 @@ public sealed class SessionResponse
     public string RefreshToken { get; init; } = string.Empty;
     public string TokenType { get; init; } = "Bearer";
     public int ExpiresIn { get; init; }
+}
+
+public sealed class TokenRequest
+{
+    [Required, StringLength(128, MinimumLength = 16)]
+    public string Token { get; set; } = string.Empty;
+}
+
+public sealed class VerifyEmailResponse
+{
+    public bool EmailVerified { get; init; }
+}
+
+public sealed class ForgotPasswordRequest
+{
+    [Required, EmailAddress, MaxLength(254)]
+    public string Email { get; set; } = string.Empty;
+}
+
+public sealed class ResetPasswordRequest
+{
+    [Required, StringLength(128, MinimumLength = 16)]
+    public string Token { get; set; } = string.Empty;
+
+    [Required, StringLength(128, MinimumLength = 12)]
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public sealed class ChangePasswordRequest
+{
+    [Required, StringLength(128, MinimumLength = 1)]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required, StringLength(128, MinimumLength = 12)]
+    public string NewPassword { get; set; } = string.Empty;
+
+    [StringLength(128)]
+    public string? DeviceId { get; set; }
+}
+
+public sealed class ConsentRequest
+{
+    [Required, StringLength(32, MinimumLength = 1)]
+    public string Version { get; set; } = string.Empty;
+}
+
+public sealed class ConsentResponse
+{
+    public string Version { get; init; } = string.Empty;
+    public DateTime AcceptedAt { get; init; }
 }

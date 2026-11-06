@@ -23,8 +23,26 @@ public static class ErrorCodes
     public const string InvalidTarget = "INVALID_TARGET";
     public const string RateLimited = "RATE_LIMITED";
     public const string InsufficientPoints = "INSUFFICIENT_POINTS";
+    public const string VotingClosed = "VOTING_CLOSED";
+    public const string EmailNotVerified = "EMAIL_NOT_VERIFIED";
+    public const string NotContractOwner = "NOT_CONTRACT_OWNER";
+    public const string EmailAlreadyVerified = "EMAIL_ALREADY_VERIFIED";
+    public const string InvalidOrExpiredToken = "INVALID_OR_EXPIRED_TOKEN";
+    public const string PasswordNotSet = "PASSWORD_NOT_SET";
+    public const string NoSharedGroup = "NO_SHARED_GROUP";
+    public const string VersionConflict = "VERSION_CONFLICT";
+    public const string PushNotConfigured = "PUSH_NOT_CONFIGURED";
+    public const string AdminIsParty = "ADMIN_IS_PARTY";
+    public const string GroupTooSmall = "GROUP_TOO_SMALL";
+    public const string IdempotencyKeyRequired = "IDEMPOTENCY_KEY_REQUIRED";
+    public const string IdempotencyKeyInUse = "IDEMPOTENCY_KEY_IN_USE";
+    public const string PayloadTooLarge = "PAYLOAD_TOO_LARGE";
+
     public const string AlreadyMember = "ALREADY_MEMBER";
     public const string GroupFull = "GROUP_FULL";
+    public const string InvalidGoogleToken = "INVALID_GOOGLE_TOKEN";
+    public const string GoogleAuthUnavailable = "GOOGLE_AUTH_UNAVAILABLE";
+    public const string NicknameRequired = "NICKNAME_REQUIRED";
     public const string NotJuror = "NOT_JUROR";
     public const string AlreadyVoted = "ALREADY_VOTED";
     public const string VotingNotFinished = "VOTING_NOT_FINISHED";

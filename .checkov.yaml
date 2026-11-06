@@ -1,0 +1,36 @@
+# Checkov (escaneo de IaC, CLARIFICACION "Checkov o tfsec"). Se ejecuta en el job iac-checkov.
+# Cada excepción está justificada; casi todas cuestan dinero y el proyecto debe ser costo cero
+# (CLARIFICACION #131). Lo que sí se puede corregir sin costo está anotado como pendiente.
+compact: true
+framework:
+  - terraform
+  - dockerfile
+skip-check:
+  # --- KMS con llave propia (CMK): 1 USD/mes por llave. Se usa el cifrado administrado por AWS (gratis).
+  - CKV_AWS_337   # Parámetros SSM SecureString con la llave aws/ssm
+  - CKV_AWS_136   # ECR cifrado con AES256
+  - CKV_AWS_158   # CloudWatch Logs con cifrado por defecto
+  - CKV_AWS_145   # S3 con SSE-S3
+  # --- Servicios de pago o fuera de la capa gratuita
+  - CKV_AWS_68    # WAF en CloudFront (CLARIFICACION: solo si los créditos alcanzan)
+  - CKV2_AWS_47   # Reglas de WAF (depende de lo anterior)
+  - CKV_AWS_126   # Monitoreo detallado de EC2 (cobro por métrica)
+  - CKV_AWS_135   # EBS optimized no aplica a t3.micro de la capa gratuita
+  - CKV_AWS_144   # Replicación entre regiones de S3
+  - CKV_AWS_310   # Failover de origen en CloudFront (un solo bucket)
+  - CKV2_AWS_11   # VPC Flow Logs (ingesta en CloudWatch con costo)
+  - CKV_AWS_86    # Logs de acceso de CloudFront (bucket extra)
+  - CKV_AWS_18    # Logs de acceso de S3 (bucket extra; CloudTrail registra la administración)
+  - CKV_AWS_338   # Retención de logs de 1 año (se guardan 14 días para no pagar almacenamiento)
+  - CKV2_AWS_62   # Notificaciones de eventos S3: no hay consumidores
+  # --- Decisiones de arquitectura del documento
+  - CKV_AWS_260   # Puerto 80 abierto en el gateway: Caddy lo necesita para el reto HTTP de Let's Encrypt y redirige a HTTPS
+  - CKV2_AWS_42   # Certificado propio en CloudFront: se usa el dominio de CloudFront (sin dominio comprado)
+  - CKV_AWS_174   # TLS 1.2 mínimo exige certificado propio; con el certificado por defecto CloudFront fija TLSv1
+  - CKV_AWS_374   # Sin restricción geográfica: la app es pública
+  - CKV_AWS_305   # Objeto raíz por defecto: CloudFront solo sirve evidencias, no un sitio
+  - CKV_AWS_51    # Etiquetas mutables en ECR: el despliegue usa la etiqueta latest además del SHA
+  # --- Pendientes sin costo (sprint 4 del plan)
+  - CKV2_AWS_61   # Ciclo de vida del bucket de evidencias: historia ID 157 (borrar a los 30 días)
+  - CKV2_AWS_32   # Política de cabeceras de respuesta en CloudFront
+  - CKV2_AWS_12   # Grupo de seguridad por defecto de la VPC sin reglas

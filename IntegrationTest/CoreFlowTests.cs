@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using IntegrationTest.Fakes;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -16,6 +17,8 @@ using Pactogg.Api.Infrastructure.Moderation;
 using Pactogg.Api.Infrastructure.Mongo;
 using Pactogg.Api.Infrastructure.Storage;
 using Pactogg.Api.Modules.Auth.Abstractions;
+using Pactogg.Api.Modules.Auth.Domain;
+using Pactogg.Api.Modules.Groups.Domain;
 using Pactogg.Api.Modules.Contracts.Abstractions;
 using Pactogg.Api.Modules.Evidence.Abstractions;
 using Pactogg.Api.Modules.Groups.Abstractions;
@@ -24,7 +27,7 @@ using Pactogg.Api.Modules.Tournaments.Domain;
 
 namespace IntegrationTest;
 
-public sealed class PactoggWebFactory : WebApplicationFactory<Program>
+public class PactoggWebFactory : WebApplicationFactory<Program>
 {
     public InMemoryUserRepository Users { get; } = new();
     public InMemoryRefreshTokenRepository RefreshTokens { get; } = new();
@@ -40,6 +43,9 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
     public InMemoryPointsLedgerRepository Ledger { get; } = new();
     public InMemoryVoteRepository Votes { get; } = new();
     public InMemoryNotificationRepository Notifications { get; } = new();
+    public InMemoryDeviceRepository Devices { get; } = new();
+    public FakeEmailSender Email { get; } = new();
+    public FakePushSender Push { get; } = new();
 
     public PactoggWebFactory()
     {
@@ -54,15 +60,19 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["RateLimit:RegisterPermitLimit"] = "100",
-                ["RateLimit:EvidencePermitLimit"] = "100"
+                ["RateLimit:EvidencePermitLimit"] = "100",
+                ["RateLimit:AccountPermitLimit"] = "1000"
             });
         });
         builder.ConfigureTestServices(services =>
         {
-            var hosted = services.SingleOrDefault(descriptor =>
-                descriptor.ServiceType == typeof(IHostedService)
-                && descriptor.ImplementationType == typeof(MongoIndexInitializer));
-            if (hosted is not null)
+            // Sin tareas de fondo: las pruebas disparan el ciclo de vida y el push a mano para ser deterministas.
+            foreach (var hosted in services.Where(descriptor =>
+                    descriptor.ServiceType == typeof(IHostedService)
+                    && (descriptor.ImplementationType == typeof(MongoIndexInitializer)
+                        || descriptor.ImplementationType == typeof(Pactogg.Api.Modules.Contracts.Lifecycle.ContractDeadlineWorker)
+                        || descriptor.ImplementationType == typeof(Pactogg.Api.Infrastructure.Push.PushDispatcher)))
+                .ToList())
             {
                 services.Remove(hosted);
             }
@@ -91,15 +101,104 @@ public sealed class PactoggWebFactory : WebApplicationFactory<Program>
             services.AddSingleton<IEvidenceRepository>(Evidence);
             services.AddSingleton<ITournamentRepository>(Tournaments);
             services.AddSingleton<IMatchRepository>(Matches);
-            services.AddSingleton<IAuditService, FakeAuditService>();
+            services.RemoveAll<IAuditReader>();
+            services.AddSingleton<FakeAuditService>();
+            services.AddSingleton<IAuditService>(sp => sp.GetRequiredService<FakeAuditService>());
+            services.AddSingleton<IAuditReader>(sp => sp.GetRequiredService<FakeAuditService>());
             services.AddSingleton<IModerationService>(Moderation);
             services.AddSingleton<IObjectStorage>(Storage);
+            services.RemoveAll<Pactogg.Api.Infrastructure.Security.IGoogleTokenValidator>();
+            services.AddSingleton<Pactogg.Api.Infrastructure.Security.IGoogleTokenValidator, FakeGoogleTokenValidator>();
             services.AddSingleton<Pactogg.Api.Modules.Votes.Abstractions.IVoteRepository>(Votes);
             services.AddSingleton<Pactogg.Api.Modules.Commitments.Abstractions.ICommitmentRepository>(Commitments);
             services.AddSingleton<Pactogg.Api.Modules.Notifications.Abstractions.INotificationRepository>(Notifications);
             services.AddSingleton<Pactogg.Api.Modules.Points.Abstractions.IPointsLedgerRepository>(Ledger);
+            services.RemoveAll<Pactogg.Api.Modules.Devices.IDeviceRepository>();
+            services.AddSingleton<Pactogg.Api.Modules.Devices.IDeviceRepository>(Devices);
+            services.RemoveAll<Pactogg.Api.Infrastructure.Email.IEmailSender>();
+            services.AddSingleton<Pactogg.Api.Infrastructure.Email.IEmailSender>(Email);
+            services.RemoveAll<Pactogg.Api.Infrastructure.Push.IPushSender>();
+            services.AddSingleton<Pactogg.Api.Infrastructure.Push.IPushSender>(Push);
+            services.AddTransient<IStartupFilter, IdempotencyTestHandler>();
         });
     }
+
+    /// <summary>Entrega todos los push encolados con el FakePushSender. Devuelve cuántos mensajes procesó.</summary>
+    public async Task<int> DrainPushAsync()
+    {
+        var queue = Services.GetRequiredService<Pactogg.Api.Infrastructure.Push.PushQueue>();
+        var count = 0;
+        while (queue.Reader.TryRead(out var message))
+        {
+            using var scope = Services.CreateScope();
+            await Pactogg.Api.Infrastructure.Push.PushDispatcher.DeliverAsync(scope.ServiceProvider, message, CancellationToken.None);
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>CLARIFICACION #22: los retos piden 3 miembros. Agrega miembros de relleno al grupo.</summary>
+    public void PadMembers(string groupId, int extra = 2)
+    {
+        var gid = ObjectId.Parse(groupId);
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < extra; i++)
+        {
+            var id = ObjectId.GenerateNewId();
+            var nick = $"relleno{id.ToString()[^8..]}";
+            Users.CreateAsync(new User
+            {
+                Id = id,
+                Email = $"{nick}@example.com",
+                Nickname = nick,
+                NicknameLower = nick,
+                Status = "active",
+                CreatedAt = now,
+                UpdatedAt = now
+            }, CancellationToken.None).GetAwaiter().GetResult();
+            Members.CreateAsync(new GroupMember
+            {
+                Id = ObjectId.GenerateNewId(),
+                GroupId = gid,
+                UserId = id,
+                Role = "member",
+                NickLower = nick,
+                PointsBalance = 100,
+                JoinedAt = now,
+                UpdatedAt = now
+            }, CancellationToken.None).GetAwaiter().GetResult();
+            Groups.TryIncrementMemberCountAsync(gid, 100, now, CancellationToken.None).GetAwaiter().GetResult();
+        }
+    }
+}
+
+/// <summary>
+/// En pruebas, cada petición sin Idempotency-Key recibe una nueva (como haría el móvil), salvo que la prueba
+/// pida omitirla con <see cref="SkipHeader"/> o ya mande la suya.
+/// </summary>
+public sealed class IdempotencyTestHandler : IStartupFilter
+{
+    public const string SkipHeader = "X-Test-Skip-Idempotency";
+
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
+        app =>
+        {
+            app.Use(async (context, nextMiddleware) =>
+            {
+                if (context.Request.Headers.ContainsKey(SkipHeader))
+                {
+                    context.Request.Headers.Remove(SkipHeader);
+                }
+                else if (!context.Request.Headers.ContainsKey("Idempotency-Key"))
+                {
+                    context.Request.Headers["Idempotency-Key"] = Guid.NewGuid().ToString("N");
+                }
+
+                await nextMiddleware();
+            });
+            next(app);
+        };
 }
 
 public sealed class CoreFlowTests : IClassFixture<PactoggWebFactory>
@@ -149,6 +248,7 @@ public sealed class CoreFlowTests : IClassFixture<PactoggWebFactory>
         var groupJson = await ReadJsonAsync(group);
         var groupId = groupJson.GetProperty("data").GetProperty("id").GetString();
         groupId.Should().NotBeNullOrWhiteSpace();
+        _factory.PadMembers(groupId!);
 
         var tournamentId = ObjectId.GenerateNewId();
         _factory.Tournaments.Add(new Tournament
@@ -455,14 +555,20 @@ public sealed class CoreFlowTests : IClassFixture<PactoggWebFactory>
         ["source"] = "manual"
     };
 
-    private static async Task<string> CreateGroupAsync(HttpClient client)
+    private async Task<string> CreateGroupAsync(HttpClient client, bool pad = true)
     {
         var response = await client.PostAsJsonAsync("/api/v1/groups", new Dictionary<string, object?>
         {
             ["name"] = $"Grupo {Guid.NewGuid():N}"[..20]
         });
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.Created);
-        return (await ReadJsonAsync(response)).GetProperty("data").GetProperty("id").GetString()!;
+        var groupId = (await ReadJsonAsync(response)).GetProperty("data").GetProperty("id").GetString()!;
+        if (pad)
+        {
+            _factory.PadMembers(groupId);
+        }
+
+        return groupId;
     }
 
     private static async Task<string> CreateContractAsync(HttpClient client, string groupId)
