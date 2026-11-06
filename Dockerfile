@@ -6,7 +6,7 @@ RUN dotnet restore Pactogg.Api/Pactogg.Api.csproj
 COPY Pactogg.Api/ Pactogg.Api/
 RUN dotnet publish Pactogg.Api/Pactogg.Api.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
