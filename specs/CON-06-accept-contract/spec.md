@@ -45,3 +45,9 @@ Aceptar un reto y retener la fianza en puntos.
 | CON06-AC5 | Reto dirigido a otro → 403 | SocialFlowTests.Accept_DirectedToAnotherMember_Returns403 |
 
 Pruebas: `IntegrationTest/SocialFlowTests.cs` (fakes en memoria) y `SecurityTest/AuthorizationTests.cs` (401).
+
+## Cambio 0.7.0
+
+- `Idempotency-Key` obligatoria; el reintento con la misma clave devuelve la misma respuesta (`Idempotent-Replayed: true`) sin descontar la fianza dos veces.
+- Si vence la fecha límite sin evidencia, el reto pasa a `expired` y la fianza retenida va al retador (CLARIFICACION #36).
+- Pruebas: `JuryFlowTests.Accept_RequiresIdempotencyKey_AndReplaysTheFirstResponse`, `JuryFlowTests.ContractPastDeadline_WithoutEvidence_ExpiresAndForfeitsBond`.

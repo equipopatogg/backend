@@ -111,6 +111,63 @@ public sealed partial class UserService
         return ToProfile(updated, groups);
     }
 
+    /// <summary>
+    /// USR-05: perfil público de alguien con quien se comparte al menos un grupo (CLARIFICACION #14):
+    /// apodo, avatar, estadísticas e Índice de Palabra. Nunca el correo.
+    /// </summary>
+    public async Task<PublicProfileResponse> GetPublicAsync(ObjectId viewerId, string id, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(id, out var targetId))
+        {
+            throw ApiException.NotFound("Usuario no encontrado.");
+        }
+
+        var target = await _users.GetByIdAsync(targetId, cancellationToken);
+        if (target is null || target.Status != "active")
+        {
+            throw ApiException.NotFound("Usuario no encontrado.");
+        }
+
+        if (targetId != viewerId)
+        {
+            var mine = await _members.ListActiveGroupIdsAsync(viewerId, cancellationToken);
+            var theirs = await _members.ListActiveGroupIdsAsync(targetId, cancellationToken);
+            if (!mine.Intersect(theirs).Any())
+            {
+                throw ApiException.Forbidden(ErrorCodes.NoSharedGroup, "Solo puedes ver perfiles de personas de tus grupos.");
+            }
+        }
+
+        var version = await _cache.GetVersionAsync(CacheExtensions.UserScope(targetId), cancellationToken);
+        return await _cache.GetOrCreateJsonAsync(
+            $"users:public:{targetId}:{version}",
+            ProfileTtl,
+            () => Task.FromResult(new PublicProfileResponse
+            {
+                Id = target.Id.ToString(),
+                Nickname = target.Nickname,
+                AvatarId = target.AvatarId,
+                Stats = ToStats(target.Stats),
+                CreatedAt = target.CreatedAt
+            }),
+            cancellationToken);
+    }
+
+    /// <summary>DEV-03: activa o desactiva cada tipo de notificación push.</summary>
+    public async Task<NotificationPreferencesDto> UpdatePreferencesAsync(ObjectId userId, NotificationPreferencesDto request, CancellationToken cancellationToken)
+    {
+        var user = await _users.GetByIdAsync(userId, cancellationToken) ?? throw ApiException.Unauthorized();
+        var preferences = user.NotificationPreferences;
+        preferences.Retos = request.Retos ?? preferences.Retos;
+        preferences.Votos = request.Votos ?? preferences.Votos;
+        preferences.Torneos = request.Torneos ?? preferences.Torneos;
+        preferences.Compromisos = request.Compromisos ?? preferences.Compromisos;
+        var updated = await _users.UpdateNotificationPreferencesAsync(userId, preferences, DateTime.UtcNow, cancellationToken)
+            ?? throw ApiException.Unauthorized();
+        await _cache.BumpVersionAsync(CacheExtensions.UserScope(userId), cancellationToken);
+        return NotificationPreferencesDto.From(updated.NotificationPreferences);
+    }
+
     /// <summary>USR-06: endpoint público; no revela nada más que si el apodo está libre.</summary>
     public async Task<NicknameAvailabilityResponse> CheckNicknameAsync(string? nickname, CancellationToken cancellationToken)
     {
@@ -133,15 +190,18 @@ public sealed partial class UserService
         Nickname = user.Nickname,
         AvatarId = user.AvatarId,
         EmailVerified = user.EmailVerified,
-        Stats = new UserStatsResponse
-        {
-            Completed = user.Stats.Completed,
-            Cheated = user.Stats.Cheated,
-            Streak = user.Stats.Streak,
-            Trophies = user.Stats.Trophies,
-            WordIndex = user.Stats.WordIndex
-        },
+        Stats = ToStats(user.Stats),
         GroupsCount = groupsCount,
+        NotificationPreferences = NotificationPreferencesDto.From(user.NotificationPreferences),
         CreatedAt = user.CreatedAt
+    };
+
+    private static UserStatsResponse ToStats(UserStats stats) => new()
+    {
+        Completed = stats.Completed,
+        Cheated = stats.Cheated,
+        Streak = stats.Streak,
+        Trophies = stats.Trophies,
+        WordIndex = stats.WordIndex
     };
 }

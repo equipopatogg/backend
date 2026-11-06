@@ -19,6 +19,7 @@ resource "aws_iam_role_policy_attachment" "api_ssm" {
 }
 
 resource "aws_iam_role_policy" "api_runtime" {
+  # checkov:skip=CKV_AWS_355: ecr:GetAuthorizationToken, rekognition:DetectModerationLabels y comprehend:DetectToxicContent no admiten permisos a nivel de recurso.
   name = "${local.name_prefix}-api-runtime"
   role = aws_iam_role.api.id
 
@@ -74,7 +75,7 @@ resource "aws_iam_role_policy" "api_runtime" {
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt"]
-        Resource = "*"
+        Resource = "arn:${data.aws_partition.current.partition}:kms:${var.aws_region}:${data.aws_caller_identity.current.account_id}:key/*"
         Condition = {
           StringEquals = {
             "kms:ViaService" = "ssm.${var.aws_region}.amazonaws.com"

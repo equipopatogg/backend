@@ -1,6 +1,6 @@
 // PactoGG · Script de la base de datos (MongoDB Atlas M0).
 //
-// Crea las 14 colecciones, sus validadores (en modo "warn": documentan el esquema sin bloquear
+// Crea las 15 colecciones, sus validadores (en modo "warn": documentan el esquema sin bloquear
 // a la API) y TODOS los índices con los mismos nombres y llaves que crea la API al arrancar
 // (Pactogg.Api/Infrastructure/Mongo/MongoIndexInitializer.cs). Es idempotente: se puede correr
 // varias veces sin duplicar nada.
@@ -86,6 +86,7 @@ const collections = {
     properties: { status: { enum: ["pending", "completion_requested", "completed"] }, description: str(3, 80) }
   },
   notifications: { required: ["user_id", "type", "title", "created_at"], properties: { user_id: oid, title: str(1, 80) } },
+  devices: { required: ["user_id", "fcm_token", "platform"], properties: { user_id: oid, fcm_token: str(20, 4096) } },
   tournaments: { required: ["group_id", "game", "status"], properties: { status: { enum: ["open", "in_progress", "finished", "cancelled"] } } },
   matches: { required: ["tournament_id", "round", "position", "status"], properties: { tournament_id: oid } },
   audit_events: { required: ["action", "entity_type", "created_at"], properties: { action: { bsonType: "string" } } },
@@ -138,12 +139,17 @@ const indexes = {
     [{ group_id: 1, debtor_id: 1, status: 1 }, { name: "ix_commitments_group_debtor_status" }],
     [{ group_id: 1, creditor_id: 1, status: 1 }, { name: "ix_commitments_group_creditor_status" }]
   ],
+  devices: [
+    [{ fcm_token: 1 }, { name: "ux_devices_fcm_token", unique: true }],
+    [{ user_id: 1 }, { name: "ix_devices_user" }]
+  ],
   notifications: [
     [{ user_id: 1, read_at: 1, _id: -1 }, { name: "ix_notifications_user_read" }],
-    [{ created_at: 1 }, { name: "ttl_notifications_90d", expireAfterSeconds: 60 * 60 * 24 * 90 }]
+    [{ created_at: 1 }, { name: "ttl_notifications_30d", expireAfterSeconds: 60 * 60 * 24 * 30 }],
+    [{ dedupe_key: 1 }, { name: "ux_notifications_dedupe", unique: true, partialFilterExpression: { dedupe_key: { $type: "string" } } }]
   ],
   tournaments: [[{ group_id: 1, status: 1, scheduled_at: 1 }, { name: "ix_tournaments_group_status_scheduled" }]],
-  audit_events: [[{ group_id: 1, created_at: -1 }, { name: "ix_audit_group_created" }]]
+  audit_events: [[{ group_id: 1, created_at: -1 }, { name: "ix_audit_group_created" }], [{ group_id: 1, _id: -1 }, { name: "ix_audit_group_id" }]]
 };
 
 let total = 0;

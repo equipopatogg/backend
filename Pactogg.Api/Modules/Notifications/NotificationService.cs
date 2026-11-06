@@ -1,21 +1,24 @@
 using MongoDB.Bson;
 using Pactogg.Api.Common;
+using Pactogg.Api.Infrastructure.Push;
 using Pactogg.Api.Modules.Notifications.Abstractions;
 using Pactogg.Api.Modules.Notifications.Domain;
 using Pactogg.Api.Modules.Notifications.Dtos;
 
 namespace Pactogg.Api.Modules.Notifications;
 
-/// <summary>NOT-01..03 y NOT-05 (interno). Los avisos son "mejor esfuerzo": si fallan no rompen la acción principal.</summary>
+/// <summary>NOT-01..05 (NOT-05 interno: guarda el aviso y encola el push). Los avisos son "mejor esfuerzo": si fallan no rompen la acción principal.</summary>
 public sealed class NotificationService
 {
     private readonly INotificationRepository _notifications;
     private readonly ILogger<NotificationService> _logger;
+    private readonly PushQueue _push;
 
-    public NotificationService(INotificationRepository notifications, ILogger<NotificationService> logger)
+    public NotificationService(INotificationRepository notifications, ILogger<NotificationService> logger, PushQueue push)
     {
         _notifications = notifications;
         _logger = logger;
+        _push = push;
     }
 
     public async Task NotifyAsync(
@@ -26,9 +29,11 @@ public sealed class NotificationService
         ObjectId? groupId = null,
         ObjectId? contractId = null,
         ObjectId? commitmentId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? dedupeSuffix = null)
     {
         var now = DateTime.UtcNow;
+        var reference = contractId ?? commitmentId ?? groupId;
         var items = userIds.Distinct().Select(userId => new Notification
         {
             Id = ObjectId.GenerateNewId(),
@@ -39,17 +44,44 @@ public sealed class NotificationService
             GroupId = groupId,
             ContractId = contractId,
             CommitmentId = commitmentId,
+            DedupeKey = reference is null ? null : $"{type}:{reference}:{userId}{(dedupeSuffix is null ? string.Empty : ":" + dedupeSuffix)}",
             CreatedAt = now
         }).ToList();
 
+        IReadOnlyList<Notification> inserted;
         try
         {
-            await _notifications.CreateManyAsync(items, cancellationToken);
+            inserted = await _notifications.CreateManyAsync(items, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "No se pudieron guardar {Count} avisos de tipo {Type}.", items.Count, type);
+            return;
         }
+
+        if (inserted.Count == 0)
+        {
+            return;
+        }
+
+        // NOT-05: además del centro de notificaciones, push por FCM (en segundo plano).
+        var data = new Dictionary<string, string> { ["type"] = type };
+        if (groupId is ObjectId g)
+        {
+            data["group_id"] = g.ToString();
+        }
+
+        if (contractId is ObjectId c)
+        {
+            data["contract_id"] = c.ToString();
+        }
+
+        if (commitmentId is ObjectId m)
+        {
+            data["commitment_id"] = m.ToString();
+        }
+
+        _push.TryEnqueue(new PushMessage(inserted.Select(x => x.UserId).ToArray(), type, Truncate(title, 80), Truncate(body, 200), data));
     }
 
     public async Task<(IReadOnlyList<NotificationResponse> Items, object Meta)> ListAsync(
@@ -77,6 +109,15 @@ public sealed class NotificationService
         var notification = await _notifications.MarkReadAsync(notificationId, userId, DateTime.UtcNow, cancellationToken)
             ?? throw ApiException.NotFound("El aviso no existe.");
         return ToResponse(notification);
+    }
+
+    /// <summary>NOT-04: el dueño elimina un aviso.</summary>
+    public async Task DeleteAsync(ObjectId userId, string id, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(id, out var notificationId) || !await _notifications.DeleteAsync(notificationId, userId, cancellationToken))
+        {
+            throw ApiException.NotFound("El aviso no existe.");
+        }
     }
 
     public async Task<ReadAllResponse> MarkAllReadAsync(ObjectId userId, CancellationToken cancellationToken) =>

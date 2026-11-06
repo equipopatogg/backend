@@ -37,6 +37,13 @@ public sealed class User
     [BsonElement("consent")]
     public ConsentRecord Consent { get; set; } = new();
 
+    /// <summary>DEV-03: qué tipos de push quiere recibir (CLARIFICACION #13).</summary>
+    [BsonElement("notification_preferences")]
+    public NotificationPreferences NotificationPreferences { get; set; } = new();
+
+    [BsonElement("password_changed_at")]
+    public DateTime? PasswordChangedAt { get; set; }
+
     [BsonElement("status")]
     public string Status { get; set; } = "active";
 
@@ -80,4 +87,20 @@ public sealed class ConsentRecord
 
     [BsonElement("accepted_at")]
     public DateTime AcceptedAt { get; set; }
+}
+
+[BsonIgnoreExtraElements]
+public sealed class NotificationPreferences
+{
+    [BsonElement("retos")]
+    public bool Retos { get; set; } = true;
+
+    [BsonElement("votos")]
+    public bool Votos { get; set; } = true;
+
+    [BsonElement("torneos")]
+    public bool Torneos { get; set; } = true;
+
+    [BsonElement("compromisos")]
+    public bool Compromisos { get; set; } = true;
 }

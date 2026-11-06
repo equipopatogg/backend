@@ -32,3 +32,8 @@ Resultado final con los votos revelados.
 | Resultado fulfilled con 2 votos revelados | IntegrationTest/JuryFlowTests.cs |
 
 401 sin token: `SecurityTest/AuthorizationTests.cs`.
+
+## Cambio 0.7.0
+
+- Votos revelados **anónimos** (CLARIFICACION #84): sin `juror_id` ni `nickname`, ordenados por sentido y texto y con fecha sin hora.
+- `bond_movement = bond_release_and_reward` cuando se cumple (premio igual a la fianza, CLARIFICACION #89).

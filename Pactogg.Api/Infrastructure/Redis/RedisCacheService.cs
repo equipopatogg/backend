@@ -67,4 +67,22 @@ public sealed class RedisCacheService : ICacheService
             _redis.RemoveFallback(_redis.Key(key));
         }
     }
+
+    public async Task<bool> TrySetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken cancellationToken)
+    {
+        var db = _redis.TryGetDatabase();
+        if (db is null)
+        {
+            return _redis.TryAddFallback(_redis.Key(key), value, ttl);
+        }
+
+        try
+        {
+            return await db.StringSetAsync(_redis.Key(key), value, ttl, When.NotExists);
+        }
+        catch (RedisException)
+        {
+            return _redis.TryAddFallback(_redis.Key(key), value, ttl);
+        }
+    }
 }

@@ -12,7 +12,7 @@ Grupos privados de amigos con su propia economía de puntos: crearlos, invitar c
 
 | ID | Endpoint | Regla clave |
 |---|---|---|
-| ID 30 | `POST /groups` | Nombre 2–40; creador admin con 100 puntos; máximo 5 grupos por usuario; jurados 1–9, consenso 0.51–1, fianzas 1–5 valores 10–200 |
+| ID 30 | `POST /groups` | Nombre 2–40; creador admin con 100 puntos; máximo 5 grupos por usuario; jurados 1–7, consenso 0.50–1 (CLARIFICACION #72, DESC_BACK 7.6), fianzas 1–5 valores 10–200 |
 | ID 31 | `POST /groups` (código) | `invite_code` de 6 caracteres criptográfico sin ambiguos (sin 0/O/1/I), único |
 | ID 32 | `POST /groups/join` | Código válido y activo (404); ya miembro (409); máximo 20 miembros (409 `GROUP_FULL`) con incremento atómico; 10 intentos/10 min |
 | — | `GET /groups`, `GET /groups/{id}`, `GET /groups/{id}/members` | Solo miembros; búsqueda por nombre y por prefijo de apodo; cursor |

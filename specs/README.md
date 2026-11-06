@@ -69,5 +69,16 @@ Cada feature agrupa los expedientes por endpoint de abajo e incluye spec, plan, 
 | [NOT-03](NOT-03-read-all/spec.md) | `POST /api/v1/notifications/read-all` | Marcar todos como leídos. |
 | [ACH-01](ACH-01-hall-of-fame/spec.md) | `GET /api/v1/groups/{gid}/fame` | ID 132 · Muro de la Fama. |
 
+## Cuenta, retos, auditoría y push (v0.8.0)
+
+| Expediente | Endpoint | Historia |
+|---|---|---|
+| [AUTH-05](AUTH-05-verify-email/spec.md) | `POST /api/v1/auth/verify-email`, `POST /api/v1/auth/verify-email/resend` | ID 17 · Correo de verificación |
+| [AUTH-06/07](AUTH-06-07-password-recovery/spec.md) | `POST /api/v1/auth/forgot-password`, `POST /api/v1/auth/reset-password`, `POST /api/v1/users/me/password` | ID 16 · Recuperar contraseña; cambio de contraseña |
+| [USR-05/07](USR-05-public-profile/spec.md) | `GET /api/v1/users/{id}`, `POST /api/v1/users/me/consent` | ID 23/25 perfil e Índice de Palabra; ID 19 privacidad |
+| [CON-04/05](CON-04-05-edit-cancel/spec.md) | `PATCH` / `DELETE /api/v1/contracts/{id}` | ID 43 · Publicar reto (editar y cancelar) |
+| [AUD-01](AUD-01-group-audit/spec.md) | `GET /api/v1/groups/{gid}/audit` | ID 160 · Historial inmutable |
+| [DEV-01..03, NOT-04](DEV-01-03-push/spec.md) | `PUT`/`DELETE /api/v1/devices/me`, `GET`/`PATCH /api/v1/devices/me/preferences`, `DELETE /api/v1/notifications/{id}` | ID 143 · Push; ID 69 · Aviso de reto recibido; ID 147 · Centro de notificaciones |
+
 Cada expediente conserva spec, plan, tareas y checklist con IDs. Una casilla completa significa verificación local, no aceptación institucional. Las rutas alias se documentan en el expediente principal. `api/openapi.yaml` es el contrato único.
 

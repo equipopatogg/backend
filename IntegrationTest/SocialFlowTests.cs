@@ -157,6 +157,7 @@ public sealed class SocialFlowTests : IClassFixture<PactoggWebFactory>
         var (friend, friendUser) = await NewUserAsync();
         var (outsider, _) = await NewUserAsync();
         var (groupId, inviteCode) = await CreateGroupAsync(owner, "Retadores");
+        _factory.PadMembers(groupId);
         (await friend.PostAsJsonAsync("/api/v1/groups/join", new Dictionary<string, object?> { ["code"] = inviteCode }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -227,6 +228,7 @@ public sealed class SocialFlowTests : IClassFixture<PactoggWebFactory>
         var (target, targetUser) = await NewUserAsync();
         var (bystander, _) = await NewUserAsync();
         var (groupId, inviteCode) = await CreateGroupAsync(owner, "Dirigidos");
+        _factory.PadMembers(groupId);
         foreach (var client in new[] { target, bystander })
         {
             (await client.PostAsJsonAsync("/api/v1/groups/join", new Dictionary<string, object?> { ["code"] = inviteCode }))

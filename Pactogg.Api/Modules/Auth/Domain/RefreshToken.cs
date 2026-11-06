@@ -24,6 +24,10 @@ public sealed class RefreshToken
     [BsonElement("revoked_at")]
     public DateTime? RevokedAt { get; set; }
 
+    /// <summary>true si se revocó al rotarlo en /auth/refresh. Solo un token rotado que reaparece indica robo (CLAR #10).</summary>
+    [BsonElement("rotated")]
+    public bool Rotated { get; set; }
+
     [BsonElement("created_at")]
     public DateTime CreatedAt { get; set; }
 }

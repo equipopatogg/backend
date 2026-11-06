@@ -14,10 +14,26 @@ public sealed class MongoNotificationRepository : INotificationRepository
         _context = context;
     }
 
-    public Task CreateManyAsync(IReadOnlyCollection<Notification> notifications, CancellationToken cancellationToken) =>
-        notifications.Count == 0
-            ? Task.CompletedTask
-            : _context.Notifications.InsertManyAsync(notifications, cancellationToken: cancellationToken);
+    public async Task<IReadOnlyList<Notification>> CreateManyAsync(IReadOnlyList<Notification> notifications, CancellationToken cancellationToken)
+    {
+        if (notifications.Count == 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            // Sin orden: si un aviso ya existía (dedupe_key duplicada) los demás sí se insertan.
+            await _context.Notifications.InsertManyAsync(notifications, new InsertManyOptions { IsOrdered = false }, cancellationToken);
+            return notifications;
+        }
+        catch (MongoBulkWriteException ex) when (ex.WriteErrors.All(x => x.Category == ServerErrorCategory.DuplicateKey))
+        {
+            // Evento repetido (por ejemplo, dos instancias procesando el mismo vencimiento): se omite.
+            var failed = ex.WriteErrors.Select(x => x.Index).ToHashSet();
+            return notifications.Where((_, index) => !failed.Contains(index)).ToList();
+        }
+    }
 
     public async Task<(IReadOnlyList<Notification> Items, bool HasMore)> ListAsync(
         ObjectId userId,
@@ -44,6 +60,9 @@ public sealed class MongoNotificationRepository : INotificationRepository
 
     public Task<long> CountUnreadAsync(ObjectId userId, CancellationToken cancellationToken) =>
         _context.Notifications.CountDocumentsAsync(x => x.UserId == userId && x.ReadAt == null, cancellationToken: cancellationToken);
+
+    public async Task<bool> DeleteAsync(ObjectId id, ObjectId userId, CancellationToken cancellationToken) =>
+        (await _context.Notifications.DeleteOneAsync(x => x.Id == id && x.UserId == userId, cancellationToken)).DeletedCount > 0;
 
     public async Task<Notification?> MarkReadAsync(ObjectId id, ObjectId userId, DateTime at, CancellationToken cancellationToken)
     {

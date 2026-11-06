@@ -17,4 +17,6 @@ public sealed class RateLimitOptions
     public int NicknameCheckWindowSeconds { get; set; } = 60;
     public int JoinPermitLimit { get; set; } = 10;
     public int JoinWindowSeconds { get; set; } = 600;
+    public int AccountPermitLimit { get; set; } = 10;
+    public int AccountWindowSeconds { get; set; } = 3600;
 }

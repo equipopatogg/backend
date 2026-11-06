@@ -7,7 +7,7 @@ using Pactogg.Api.Infrastructure.Mongo;
 
 namespace Pactogg.Api.Infrastructure.Audit;
 
-public sealed class MongoAuditService : IAuditService
+public sealed class MongoAuditService : IAuditService, IAuditReader
 {
     private readonly MongoContext _context;
 
@@ -49,5 +49,38 @@ public sealed class MongoAuditService : IAuditService
             Hash = hash,
             CreatedAt = createdAt
         }, cancellationToken: cancellationToken);
+    }
+
+    public async Task<(IReadOnlyList<AuditEvent> Items, bool HasMore)> ListByGroupAsync(
+        ObjectId groupId,
+        string? entityType,
+        ObjectId? entityId,
+        int limit,
+        ObjectId? cursor,
+        CancellationToken cancellationToken)
+    {
+        var builder = Builders<AuditEvent>.Filter;
+        var filter = builder.Eq(x => x.GroupId, groupId);
+        if (!string.IsNullOrWhiteSpace(entityType))
+        {
+            filter &= builder.Eq(x => x.EntityType, entityType);
+        }
+
+        if (entityId is ObjectId entity)
+        {
+            filter &= builder.Eq(x => x.EntityId, entity);
+        }
+
+        if (cursor is ObjectId before)
+        {
+            filter &= builder.Lt(x => x.Id, before);
+        }
+
+        var items = await _context.AuditEvents.Find(filter)
+            .SortByDescending(x => x.Id)
+            .Limit(limit + 1)
+            .ToListAsync(cancellationToken);
+        var hasMore = items.Count > limit;
+        return (hasMore ? items.Take(limit).ToList() : items, hasMore);
     }
 }

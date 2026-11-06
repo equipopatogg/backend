@@ -3,7 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
+using Pactogg.Api.Modules.Contracts.Lifecycle;
 
 namespace IntegrationTest;
 
@@ -75,8 +77,8 @@ public sealed class JuryFlowTests : IClassFixture<PactoggWebFactory>
 
         (await j1.GetAsync($"/api/v1/contracts/{contractId}/result")).StatusCode.Should().Be(HttpStatusCode.Conflict);
         var early = await owner.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "cheating" });
-        early.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        (await Code(early)).Should().Be("VOTING_NOT_FINISHED");
+        early.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await Code(early)).Should().Be("ADMIN_IS_PARTY");
 
         var second = await Data(await j2.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("legit")));
         second.GetProperty("status").GetString().Should().Be("fulfilled");
@@ -85,13 +87,22 @@ public sealed class JuryFlowTests : IClassFixture<PactoggWebFactory>
         var result = await Data(await doer.GetAsync($"/api/v1/contracts/{contractId}/result"));
         result.GetProperty("outcome").GetString().Should().Be("fulfilled");
         result.GetProperty("resolved_by").GetString().Should().Be("jury");
-        result.GetProperty("bond_movement").GetString().Should().Be("bond_release");
+        result.GetProperty("bond_movement").GetString().Should().Be("bond_release_and_reward");
         result.GetProperty("votes").GetArrayLength().Should().Be(2);
+        foreach (var revealed in result.GetProperty("votes").EnumerateArray())
+        {
+            // CLARIFICACION #84: comentarios visibles sin revelar quién votó.
+            revealed.TryGetProperty("juror_id", out _).Should().BeFalse();
+            revealed.TryGetProperty("nickname", out _).Should().BeFalse();
+        }
+
+        result.GetRawText().Should().NotContain(jurors[0].User.Nickname).And.NotContain(jurors[0].User.Id);
 
         var points = await ReadJsonAsync(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me"));
-        points.GetProperty("data").GetProperty("balance").GetInt32().Should().Be(100);
+        // CLARIFICACION #89: 100 − 50 (fianza) + 50 (se libera) + 50 (premio igual a la fianza).
+        points.GetProperty("data").GetProperty("balance").GetInt32().Should().Be(150);
         points.GetProperty("data").GetProperty("movements").EnumerateArray().Select(x => x.GetProperty("type").GetString())
-            .Should().BeEquivalentTo(["bond_release", "bond_lock"]);
+            .Should().BeEquivalentTo(["reward", "bond_release", "bond_lock"]);
         (await Data(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me?type=bond_lock"))).GetProperty("movements").GetArrayLength().Should().Be(1);
         (await doer.GetAsync($"/api/v1/groups/{groupId}/points/me?type=compra")).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
 
@@ -164,7 +175,7 @@ public sealed class JuryFlowTests : IClassFixture<PactoggWebFactory>
     }
 
     [Fact]
-    public async Task TiedVote_IsResolvedOnlyByAdmin()
+    public async Task TiedVote_IsResolvedOnlyByNeutralAdmin()
     {
         var (owner, _) = await NewUserAsync();
         var (doer, doerUser) = await NewUserAsync();
@@ -176,32 +187,236 @@ public sealed class JuryFlowTests : IClassFixture<PactoggWebFactory>
             await JoinAsync(client, code);
         }
 
+        var contractId = await StartVotingAsync(owner, doer, groupId, doerUser.Id, 25);
+
+        // Se une después de sortear el jurado y se vuelve administrador: no es parte del reto.
+        var (admin2, admin2User) = await NewUserAsync();
+        await JoinAsync(admin2, code);
+        _factory.Members.Find(ObjectId.Parse(groupId), ObjectId.Parse(admin2User.Id))!.Role = "admin";
+
+        var early = await admin2.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "cheating" });
+        early.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await Code(early)).Should().Be("VOTING_NOT_FINISHED");
+
+        (await Data(await j1.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("legit")))).GetProperty("needs_admin").GetBoolean().Should().BeFalse();
+        var tie = await Data(await j2.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("cheat")));
+        tie.GetProperty("status").GetString().Should().Be("voting");
+        tie.GetProperty("needs_admin").GetBoolean().Should().BeTrue();
+        (await Data(await admin2.GetAsync($"/api/v1/contracts/{contractId}/votes/summary"))).GetProperty("admin_can_resolve").GetBoolean().Should().BeTrue();
+        (await Data(await owner.GetAsync($"/api/v1/contracts/{contractId}/votes/summary"))).GetProperty("admin_can_resolve").GetBoolean().Should().BeFalse();
+        (await Data(await admin2.GetAsync("/api/v1/notifications"))).EnumerateArray()
+            .Should().Contain(x => x.GetProperty("type").GetString() == "vote_tie");
+
+        var party = await owner.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "cheating" });
+        party.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await Code(party)).Should().Be("ADMIN_IS_PARTY");
+
+        var notAdmin = await j1.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "fulfilled" });
+        notAdmin.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await Code(notAdmin)).Should().Be("NOT_GROUP_ADMIN");
+        (await admin2.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "maybe" }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var resolved = await Data(await admin2.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "fulfilled" }));
+        resolved.GetProperty("outcome").GetString().Should().Be("fulfilled");
+        resolved.GetProperty("resolved_by").GetString().Should().Be("admin");
+        resolved.GetProperty("legit_votes").GetInt32().Should().Be(1);
+        resolved.GetProperty("cheat_votes").GetInt32().Should().Be(1);
+        (await Data(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me"))).GetProperty("balance").GetInt32().Should().Be(125);
+    }
+
+    [Fact]
+    public async Task TiedVote_WithoutNeutralAdmin_AssignsOneExtraJuror()
+    {
+        var (owner, _) = await NewUserAsync();
+        var (doer, doerUser) = await NewUserAsync();
+        var (j1, _) = await NewUserAsync();
+        var (j2, _) = await NewUserAsync();
+        var (groupId, code) = await CreateGroupAsync(owner, jurors: 2);
+        foreach (var client in new[] { doer, j1, j2 })
+        {
+            await JoinAsync(client, code);
+        }
+
+        var contractId = await StartVotingAsync(owner, doer, groupId, doerUser.Id, 25);
+        var (j3, j3User) = await NewUserAsync();
+        await JoinAsync(j3, code);
+
+        await j1.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("legit"));
+        var tie = await Data(await j2.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("cheat")));
+        tie.GetProperty("needs_admin").GetBoolean().Should().BeFalse();
+
+        var contract = _factory.Contracts.Get(ObjectId.Parse(contractId));
+        contract.ExtraJurorAssigned.Should().BeTrue();
+        contract.Jurors.Should().HaveCount(3).And.Contain(ObjectId.Parse(j3User.Id));
+        (await Data(await j3.GetAsync("/api/v1/notifications"))).EnumerateArray()
+            .Should().Contain(x => x.GetProperty("type").GetString() == "vote_requested");
+
+        var decided = await Data(await j3.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("legit", "Desempate")));
+        decided.GetProperty("status").GetString().Should().Be("fulfilled");
+    }
+
+    [Fact]
+    public async Task VotingDeadlines_ExtendOnce_ThenAdminPhase_ThenCancelWithRefund()
+    {
+        var (owner, _) = await NewUserAsync();
+        var (doer, doerUser) = await NewUserAsync();
+        var (j1, _) = await NewUserAsync();
+        var (groupId, code) = await CreateGroupAsync(owner, jurors: 1);
+        await JoinAsync(doer, code);
+        await JoinAsync(j1, code);
+
+        var contractId = await StartVotingAsync(owner, doer, groupId, doerUser.Id, 50);
+        var id = ObjectId.Parse(contractId);
+        var contract = _factory.Contracts.Get(id);
+        contract.VotingEndsAt.Should().BeCloseTo(DateTime.UtcNow.AddHours(48), TimeSpan.FromMinutes(1));
+
+        // Recordatorio "votación por vencer", una sola vez.
+        contract.VotingEndsAt = DateTime.UtcNow.AddHours(2);
+        await RunLifecycleAsync();
+        await RunLifecycleAsync();
+        (await Data(await j1.GetAsync("/api/v1/notifications"))).EnumerateArray()
+            .Count(x => x.GetProperty("type").GetString() == "vote_expiring").Should().Be(1);
+
+        // Vence sin quórum → se extiende 24 h una sola vez.
+        contract.VotingEndsAt = DateTime.UtcNow.AddMinutes(-1);
+        await RunLifecycleAsync();
+        contract.Status.Should().Be("voting");
+        contract.VotingExtended.Should().BeTrue();
+        contract.VotingEndsAt.Should().BeCloseTo(DateTime.UtcNow.AddHours(24), TimeSpan.FromMinutes(1));
+        (await Data(await j1.GetAsync("/api/v1/notifications"))).EnumerateArray()
+            .Should().Contain(x => x.GetProperty("type").GetString() == "vote_extended");
+
+        // Sigue sin quórum → decide el administrador (48 h).
+        contract.VotingEndsAt = DateTime.UtcNow.AddMinutes(-1);
+        await RunLifecycleAsync();
+        contract.AdminDeadlineAt.Should().NotBeNull();
+        var late = await j1.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("legit"));
+        late.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await Code(late)).Should().Be("VOTING_CLOSED");
+
+        // El administrador no decide → cancelled, se devuelve la fianza y no cambia la reputación.
+        contract.AdminDeadlineAt = DateTime.UtcNow.AddMinutes(-1);
+        await RunLifecycleAsync();
+        contract.Status.Should().Be("cancelled");
+        contract.ClosedReason.Should().Be("admin_timeout");
+        (await Data(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me"))).GetProperty("balance").GetInt32().Should().Be(100);
+        var stats = (await Data(await doer.GetAsync("/api/v1/users/me"))).GetProperty("stats");
+        stats.GetProperty("completed").GetInt32().Should().Be(0);
+        stats.GetProperty("cheated").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ContractPastDeadline_WithoutEvidence_ExpiresAndForfeitsBond()
+    {
+        var (owner, _) = await NewUserAsync();
+        var (doer, doerUser) = await NewUserAsync();
+        var (groupId, code) = await CreateGroupAsync(owner, jurors: 1);
+        await JoinAsync(doer, code);
+        _factory.PadMembers(groupId, 1);
+
         var contractId = await CreateContractAsync(owner, groupId, 25, doerUser.Id);
+        (await doer.PostAsync($"/api/v1/contracts/{contractId}/accept", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var contract = _factory.Contracts.Get(ObjectId.Parse(contractId));
+        contract.Deadline = DateTime.UtcNow.AddMinutes(-1);
+
+        var late = await doer.PostAsJsonAsync($"/api/v1/contracts/{contractId}/evidence", new Dictionary<string, object?>
+        {
+            ["type"] = "link",
+            ["url"] = "https://www.youtube.com/watch?v=tarde"
+        });
+        late.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        await RunLifecycleAsync();
+        contract.Status.Should().Be("expired");
+        (await Data(await owner.GetAsync($"/api/v1/groups/{groupId}/points/me"))).GetProperty("balance").GetInt32().Should().Be(125);
+        (await Data(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me"))).GetProperty("balance").GetInt32().Should().Be(75);
+        (await Data(await doer.GetAsync("/api/v1/notifications"))).EnumerateArray()
+            .Should().Contain(x => x.GetProperty("type").GetString() == "contract_expired");
+    }
+
+    [Fact]
+    public async Task Contract_InGroupWithFewerThanThreeMembers_Returns409()
+    {
+        var (owner, _) = await NewUserAsync();
+        var (doer, _) = await NewUserAsync();
+        var (groupId, code) = await CreateGroupAsync(owner, jurors: 1);
+        await JoinAsync(doer, code);
+
+        var response = await owner.PostAsJsonAsync($"/api/v1/groups/{groupId}/contracts", new Dictionary<string, object?>
+        {
+            ["game"] = "Valorant",
+            ["condition"] = "Ganar tres partidas seguidas",
+            ["reward"] = "Unos tacos",
+            ["deadline"] = DateTimeOffset.UtcNow.AddDays(3).ToString("O"),
+            ["bond_required"] = 25,
+            ["target_type"] = "group",
+            ["source"] = "manual"
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await Code(response)).Should().Be("GROUP_TOO_SMALL");
+    }
+
+    [Fact]
+    public async Task Accept_RequiresIdempotencyKey_AndReplaysTheFirstResponse()
+    {
+        var (owner, _) = await NewUserAsync();
+        var (doer, doerUser) = await NewUserAsync();
+        var (groupId, code) = await CreateGroupAsync(owner, jurors: 1);
+        await JoinAsync(doer, code);
+        _factory.PadMembers(groupId, 1);
+        var contractId = await CreateContractAsync(owner, groupId, 25, doerUser.Id);
+
+        using (var missing = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/contracts/{contractId}/accept"))
+        {
+            missing.Headers.Add(IdempotencyTestHandler.SkipHeader, "1");
+            var response = await doer.SendAsync(missing);
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await Code(response)).Should().Be("IDEMPOTENCY_KEY_REQUIRED");
+        }
+
+        var key = Guid.NewGuid().ToString("N");
+        HttpResponseMessage first, second;
+        using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/contracts/{contractId}/accept"))
+        {
+            request.Headers.Add("Idempotency-Key", key);
+            first = await doer.SendAsync(request);
+        }
+
+        using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/contracts/{contractId}/accept"))
+        {
+            request.Headers.Add("Idempotency-Key", key);
+            second = await doer.SendAsync(request);
+        }
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.Headers.GetValues("Idempotent-Replayed").Should().ContainSingle("true");
+        (await second.Content.ReadAsStringAsync()).Should().Be(await first.Content.ReadAsStringAsync());
+
+        // La fianza se descontó una sola vez.
+        (await Data(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me"))).GetProperty("balance").GetInt32().Should().Be(75);
+
+        // Otra clave sobre el mismo reto ya no es reintento: el reto ya no está abierto.
+        (await doer.PostAsync($"/api/v1/contracts/{contractId}/accept", null)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    private async Task<string> StartVotingAsync(HttpClient owner, HttpClient doer, string groupId, string doerId, int bond)
+    {
+        var contractId = await CreateContractAsync(owner, groupId, bond, doerId);
         (await doer.PostAsync($"/api/v1/contracts/{contractId}/accept", null)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await doer.PostAsJsonAsync($"/api/v1/contracts/{contractId}/evidence", new Dictionary<string, object?>
         {
             ["type"] = "link",
             ["url"] = "https://medal.tv/clips/abc"
         })).StatusCode.Should().Be(HttpStatusCode.Created);
+        return contractId;
+    }
 
-        (await Data(await j1.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("legit")))).GetProperty("needs_admin").GetBoolean().Should().BeFalse();
-        var tie = await Data(await j2.PutAsJsonAsync($"/api/v1/contracts/{contractId}/votes", Vote("cheat")));
-        tie.GetProperty("status").GetString().Should().Be("voting");
-        tie.GetProperty("needs_admin").GetBoolean().Should().BeTrue();
-        (await Data(await owner.GetAsync($"/api/v1/contracts/{contractId}/votes/summary"))).GetProperty("admin_can_resolve").GetBoolean().Should().BeTrue();
-
-        var notAdmin = await j1.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "fulfilled" });
-        notAdmin.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await Code(notAdmin)).Should().Be("NOT_GROUP_ADMIN");
-        (await owner.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "maybe" }))
-            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-
-        var resolved = await Data(await owner.PostAsJsonAsync($"/api/v1/contracts/{contractId}/votes/resolve", new Dictionary<string, object?> { ["outcome"] = "fulfilled" }));
-        resolved.GetProperty("outcome").GetString().Should().Be("fulfilled");
-        resolved.GetProperty("resolved_by").GetString().Should().Be("admin");
-        resolved.GetProperty("legit_votes").GetInt32().Should().Be(1);
-        resolved.GetProperty("cheat_votes").GetInt32().Should().Be(1);
-        (await Data(await doer.GetAsync($"/api/v1/groups/{groupId}/points/me"))).GetProperty("balance").GetInt32().Should().Be(100);
+    private async Task RunLifecycleAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<ContractLifecycleService>().RunOnceAsync(DateTime.UtcNow, CancellationToken.None);
     }
 
     [Fact]
@@ -210,6 +425,7 @@ public sealed class JuryFlowTests : IClassFixture<PactoggWebFactory>
         var (owner, _) = await NewUserAsync();
         var (outsider, _) = await NewUserAsync();
         var (groupId, _) = await CreateGroupAsync(owner, jurors: 3);
+        _factory.PadMembers(groupId);
         var contractId = await CreateContractAsync(owner, groupId, 25, null);
 
         foreach (var path in new[]

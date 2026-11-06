@@ -45,4 +45,5 @@ public sealed class MongoContext
     public IMongoCollection<Commitment> Commitments => Database.GetCollection<Commitment>("commitments");
     public IMongoCollection<Notification> Notifications => Database.GetCollection<Notification>("notifications");
     public IMongoCollection<AuditEvent> AuditEvents => Database.GetCollection<AuditEvent>("audit_events");
+    public IMongoCollection<Modules.Devices.Device> Devices => Database.GetCollection<Modules.Devices.Device>("devices");
 }

@@ -44,6 +44,7 @@ public static class FunctionalFlowChecks
         group.StatusCode.Should().Be(HttpStatusCode.Created);
         var groupId = (await ReadJsonAsync(group)).GetProperty("data").GetProperty("id").GetString();
         groupId.Should().NotBeNullOrWhiteSpace();
+        factory.PadMembers(groupId!);
 
         var contract = await client.PostAsJsonAsync("/api/v1/contracts", new Dictionary<string, object?>
         {

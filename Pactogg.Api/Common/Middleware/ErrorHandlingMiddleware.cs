@@ -30,6 +30,12 @@ public sealed class ErrorHandlingMiddleware
         }
         catch (BadHttpRequestException ex)
         {
+            if (ex.StatusCode == StatusCodes.Status413PayloadTooLarge && !context.Request.HasFormContentType)
+            {
+                await ErrorResponseWriter.WriteAsync(context, StatusCodes.Status413PayloadTooLarge, ErrorCodes.PayloadTooLarge, "El cuerpo de la solicitud es demasiado grande.");
+                return;
+            }
+
             var status = ex.StatusCode == StatusCodes.Status413PayloadTooLarge
                 ? StatusCodes.Status422UnprocessableEntity
                 : StatusCodes.Status400BadRequest;

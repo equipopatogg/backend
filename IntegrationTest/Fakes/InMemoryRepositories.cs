@@ -55,6 +55,50 @@ public sealed class InMemoryUserRepository : IUserRepository
     public Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<ObjectId> ids, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<User>>(_users.Values.Where(x => ids.Contains(x.Id)).ToList());
 
+    public Task SetEmailVerifiedAsync(ObjectId id, DateTime at, CancellationToken cancellationToken)
+    {
+        if (_users.TryGetValue(id, out var user))
+        {
+            user.EmailVerified = true;
+            user.UpdatedAt = at;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task UpdatePasswordAsync(ObjectId id, string passwordHash, DateTime at, CancellationToken cancellationToken)
+    {
+        if (_users.TryGetValue(id, out var user))
+        {
+            user.PasswordHash = passwordHash;
+            user.PasswordChangedAt = at;
+            user.UpdatedAt = at;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateConsentAsync(ObjectId id, string version, DateTime at, CancellationToken cancellationToken)
+    {
+        if (_users.TryGetValue(id, out var user))
+        {
+            user.Consent = new ConsentRecord { Version = version, AcceptedAt = at };
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<User?> UpdateNotificationPreferencesAsync(ObjectId id, NotificationPreferences preferences, DateTime at, CancellationToken cancellationToken)
+    {
+        if (!_users.TryGetValue(id, out var user))
+        {
+            return Task.FromResult<User?>(null);
+        }
+
+        user.NotificationPreferences = preferences;
+        return Task.FromResult<User?>(user);
+    }
+
     public Task<User?> UpdateProfileAsync(ObjectId id, string? nickname, string? avatarId, DateTime at, CancellationToken cancellationToken)
     {
         lock (_users)
@@ -132,6 +176,18 @@ public sealed class InMemoryRefreshTokenRepository : IRefreshTokenRepository
         if (_tokens.TryGetValue(id, out var token))
         {
             token.RevokedAt = at;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task MarkRotatedAsync(ObjectId id, DateTime at, CancellationToken cancellationToken)
+    {
+        var token = _tokens.Values.FirstOrDefault(x => x.Id == id);
+        if (token is not null && token.RevokedAt is null)
+        {
+            token.RevokedAt = at;
+            token.Rotated = true;
         }
 
         return Task.CompletedTask;
@@ -403,23 +459,14 @@ public sealed class InMemoryContractRepository : IContractRepository
         var fulfilled = outcome == "fulfilled";
         if (contract.AcceptedBy is ObjectId acceptor && contract.BondRequired > 0)
         {
-            var receiver = fulfilled ? acceptor : contract.ChallengerId;
-            var member = _members.Find(contract.GroupId, receiver);
-            if (member is not null)
+            if (fulfilled)
             {
-                member.PointsBalance += contract.BondRequired;
-                _ledger.Entries.Add(new PointsLedgerEntry
-                {
-                    Id = ObjectId.GenerateNewId(),
-                    GroupId = contract.GroupId,
-                    UserId = receiver,
-                    Type = fulfilled ? "bond_release" : "bond_forfeit",
-                    Amount = contract.BondRequired,
-                    RefType = "contract",
-                    RefId = contract.Id,
-                    BalanceAfter = member.PointsBalance,
-                    CreatedAt = now
-                });
+                Credit(contract, acceptor, contract.BondRequired, "bond_release", now);
+                Credit(contract, acceptor, contract.BondRequired, "reward", now);
+            }
+            else
+            {
+                Credit(contract, contract.ChallengerId, contract.BondRequired, "bond_forfeit", now);
             }
         }
 
@@ -460,6 +507,165 @@ public sealed class InMemoryContractRepository : IContractRepository
         }
 
         return contract;
+    }
+
+    private void Credit(Contract contract, ObjectId userId, int amount, string type, DateTime now)
+    {
+        var member = _members.Find(contract.GroupId, userId);
+        if (member is null)
+        {
+            return;
+        }
+
+        member.PointsBalance += amount;
+        _ledger.Entries.Add(new PointsLedgerEntry
+        {
+            Id = ObjectId.GenerateNewId(),
+            GroupId = contract.GroupId,
+            UserId = userId,
+            Type = type,
+            Amount = amount,
+            RefType = "contract",
+            RefId = contract.Id,
+            BalanceAfter = member.PointsBalance,
+            CreatedAt = now
+        });
+    }
+
+    public Task<IReadOnlyList<Contract>> ListPastDeadlineAsync(DateTime now, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Contract>>(_contracts.Values
+            .Where(x => (x.Status == "open" || x.Status == "in_progress") && x.Deadline <= now)
+            .Take(limit).ToList());
+
+    public Task<IReadOnlyList<Contract>> ListVotingDueAsync(DateTime now, DateTime reminderThreshold, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Contract>>(_contracts.Values
+            .Where(x => x.Status == "voting"
+                && (x.VotingEndsAt <= now || x.AdminDeadlineAt <= now || (x.VotingEndsAt <= reminderThreshold && !x.VoteReminderSent)))
+            .Take(limit).ToList());
+
+    public Task<Contract?> TryExpireAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        Contract contract;
+        lock (_contracts)
+        {
+            if (!_contracts.TryGetValue(id, out var found) || (found.Status != "open" && found.Status != "in_progress") || found.Deadline > now)
+            {
+                return Task.FromResult<Contract?>(null);
+            }
+
+            contract = found;
+            contract.Status = "expired";
+            contract.ClosedReason = "deadline_without_evidence";
+            contract.ResolvedBy = "system";
+            contract.ResolvedAt = now;
+            contract.UpdatedAt = now;
+            contract.Version++;
+        }
+
+        if (contract is { AcceptedBy: ObjectId acceptor, BondRequired: > 0 })
+        {
+            Credit(contract, contract.ChallengerId, contract.BondRequired, "bond_forfeit", now);
+            var user = _users.GetByIdAsync(acceptor, cancellationToken).Result;
+            if (user is not null)
+            {
+                user.Stats.Streak = 0;
+            }
+        }
+
+        return Task.FromResult<Contract?>(contract);
+    }
+
+    public Task<Contract?> TryExtendVotingAsync(ObjectId id, DateTime newEnd, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "voting" && !x.VotingExtended, x =>
+        {
+            x.VotingExtended = true;
+            x.VotingEndsAt = newEnd;
+            x.VoteReminderSent = false;
+            x.UpdatedAt = now;
+        });
+
+    public Task<Contract?> TryStartAdminPhaseAsync(ObjectId id, DateTime adminDeadline, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "voting" && x.AdminDeadlineAt == null, x =>
+        {
+            x.AdminDeadlineAt = adminDeadline;
+            x.UpdatedAt = now;
+        });
+
+    public Task<Contract?> TryAddExtraJurorAsync(ObjectId id, ObjectId jurorId, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "voting" && !x.ExtraJurorAssigned, x =>
+        {
+            if (!x.Jurors.Contains(jurorId))
+            {
+                x.Jurors.Add(jurorId);
+            }
+
+            x.ExtraJurorAssigned = true;
+            x.VotingEndsAt = now.AddHours(24);
+            x.UpdatedAt = now;
+        });
+
+    public Task MarkReminderSentAsync(ObjectId id, CancellationToken cancellationToken)
+    {
+        if (_contracts.TryGetValue(id, out var contract))
+        {
+            contract.VoteReminderSent = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async Task<Contract?> TryCancelVotingWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken)
+    {
+        var contract = await Mutate(id, x => x.Status == "voting", x =>
+        {
+            x.Status = "cancelled";
+            x.ClosedReason = reason;
+            x.ResolvedBy = "system";
+            x.ResolvedAt = now;
+            x.UpdatedAt = now;
+        });
+
+        if (contract is { AcceptedBy: ObjectId acceptor, BondRequired: > 0 })
+        {
+            Credit(contract, acceptor, contract.BondRequired, "bond_release", now);
+        }
+
+        return contract;
+    }
+
+    public Task<Contract?> TryUpdateOpenAsync(ObjectId id, int expectedVersion, string game, string condition, string reward, DateTime deadline, int bond, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "open" && x.Version == expectedVersion && x.AcceptedBy == null, x =>
+        {
+            x.Game = game;
+            x.Condition = condition;
+            x.Reward = reward;
+            x.Deadline = deadline;
+            x.BondRequired = bond;
+            x.UpdatedAt = now;
+        });
+
+    public Task<Contract?> TryCancelOpenAsync(ObjectId id, int expectedVersion, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "open" && x.Version == expectedVersion && x.AcceptedBy == null, x =>
+        {
+            x.Status = "cancelled";
+            x.ClosedReason = "cancelled_by_challenger";
+            x.ResolvedAt = now;
+            x.UpdatedAt = now;
+        });
+
+    private Task<Contract?> Mutate(ObjectId id, Func<Contract, bool> when, Action<Contract> apply)
+    {
+        lock (_contracts)
+        {
+            if (!_contracts.TryGetValue(id, out var found) || !when(found))
+            {
+                return Task.FromResult<Contract?>(null);
+            }
+
+            apply(found);
+            found.Version++;
+            return Task.FromResult<Contract?>(found);
+        }
     }
 
     public Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListForGroupAsync(
@@ -709,8 +915,10 @@ public sealed class InMemoryMatchRepository : IMatchRepository
             .ToList());
 }
 
-public sealed class FakeAuditService : IAuditService
+public sealed class FakeAuditService : IAuditService, IAuditReader
 {
+    private readonly List<AuditEvent> _events = [];
+
     public Task AppendAsync(
         string action,
         ObjectId? actorId,
@@ -718,7 +926,47 @@ public sealed class FakeAuditService : IAuditService
         ObjectId? entityId,
         ObjectId? groupId,
         object? payload,
-        CancellationToken cancellationToken) => Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        lock (_events)
+        {
+            _events.Add(new AuditEvent
+            {
+                Id = ObjectId.GenerateNewId(),
+                Action = action,
+                ActorId = actorId,
+                EntityType = entityType,
+                EntityId = entityId,
+                GroupId = groupId,
+                Payload = payload is null ? "{}" : System.Text.Json.JsonSerializer.Serialize(payload),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<(IReadOnlyList<AuditEvent> Items, bool HasMore)> ListByGroupAsync(
+        ObjectId groupId,
+        string? entityType,
+        ObjectId? entityId,
+        int limit,
+        ObjectId? cursor,
+        CancellationToken cancellationToken)
+    {
+        lock (_events)
+        {
+            var query = _events.Where(x => x.GroupId == groupId
+                && (entityType == null || x.EntityType == entityType)
+                && (entityId == null || x.EntityId == entityId)
+                && (cursor == null || x.Id < cursor))
+                .OrderByDescending(x => x.Id)
+                .Take(limit + 1)
+                .ToList();
+            var hasMore = query.Count > limit;
+            return Task.FromResult<(IReadOnlyList<AuditEvent>, bool)>((hasMore ? query.Take(limit).ToList() : query, hasMore));
+        }
+    }
 }
 
 public sealed class FakeModerationService : IModerationService
@@ -854,14 +1102,24 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
 
     public IReadOnlyList<Notification> For(ObjectId userId) => _items.Values.Where(x => x.UserId == userId).ToList();
 
-    public Task CreateManyAsync(IReadOnlyCollection<Notification> notifications, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<Notification>> CreateManyAsync(IReadOnlyList<Notification> notifications, CancellationToken cancellationToken)
     {
-        foreach (var notification in notifications)
+        var inserted = new List<Notification>();
+        lock (_items)
         {
-            _items[notification.Id] = notification;
+            foreach (var notification in notifications)
+            {
+                if (notification.DedupeKey is not null && _items.Values.Any(x => x.DedupeKey == notification.DedupeKey))
+                {
+                    continue;
+                }
+
+                _items[notification.Id] = notification;
+                inserted.Add(notification);
+            }
         }
 
-        return Task.CompletedTask;
+        return Task.FromResult<IReadOnlyList<Notification>>(inserted);
     }
 
     public Task<(IReadOnlyList<Notification> Items, bool HasMore)> ListAsync(ObjectId userId, bool unreadOnly, int limit, ObjectId? cursor, CancellationToken cancellationToken)
@@ -877,6 +1135,14 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
 
     public Task<long> CountUnreadAsync(ObjectId userId, CancellationToken cancellationToken) =>
         Task.FromResult((long)_items.Values.Count(x => x.UserId == userId && x.ReadAt is null));
+
+    public Task<bool> DeleteAsync(ObjectId id, ObjectId userId, CancellationToken cancellationToken)
+    {
+        lock (_items)
+        {
+            return Task.FromResult(_items.TryGetValue(id, out var item) && item.UserId == userId && _items.TryRemove(id, out _));
+        }
+    }
 
     public Task<Notification?> MarkReadAsync(ObjectId id, ObjectId userId, DateTime at, CancellationToken cancellationToken)
     {
@@ -915,5 +1181,91 @@ public sealed class FakeGoogleTokenValidator : Pactogg.Api.Infrastructure.Securi
 
         return Task.FromResult<Pactogg.Api.Infrastructure.Security.GoogleIdentity?>(
             new Pactogg.Api.Infrastructure.Security.GoogleIdentity(parts[1], parts[2], parts[3] == "true", "Jugador"));
+    }
+}
+
+public sealed class InMemoryDeviceRepository : Pactogg.Api.Modules.Devices.IDeviceRepository
+{
+    private readonly ConcurrentDictionary<string, Pactogg.Api.Modules.Devices.Device> _items = new();
+
+    public Task<Pactogg.Api.Modules.Devices.Device> UpsertAsync(ObjectId userId, string fcmToken, string platform, string? appVersion, DateTime now, CancellationToken cancellationToken)
+    {
+        var device = _items.AddOrUpdate(
+            fcmToken,
+            _ => new Pactogg.Api.Modules.Devices.Device { Id = ObjectId.GenerateNewId(), UserId = userId, FcmToken = fcmToken, Platform = platform, AppVersion = appVersion, CreatedAt = now, UpdatedAt = now },
+            (_, existing) =>
+            {
+                existing.UserId = userId;
+                existing.Platform = platform;
+                existing.AppVersion = appVersion;
+                existing.UpdatedAt = now;
+                return existing;
+            });
+        return Task.FromResult(device);
+    }
+
+    public Task<long> DeleteAsync(ObjectId userId, string? fcmToken, CancellationToken cancellationToken)
+    {
+        var removed = 0L;
+        foreach (var item in _items.Values.Where(x => x.UserId == userId && (fcmToken == null || x.FcmToken == fcmToken)).ToList())
+        {
+            if (_items.TryRemove(item.FcmToken, out _))
+            {
+                removed++;
+            }
+        }
+
+        return Task.FromResult(removed);
+    }
+
+    public Task<IReadOnlyList<Pactogg.Api.Modules.Devices.Device>> ListByUsersAsync(IReadOnlyCollection<ObjectId> userIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Pactogg.Api.Modules.Devices.Device>>(_items.Values.Where(x => userIds.Contains(x.UserId)).ToList());
+
+    public Task DeleteTokensAsync(IReadOnlyCollection<string> fcmTokens, CancellationToken cancellationToken)
+    {
+        foreach (var token in fcmTokens)
+        {
+            _items.TryRemove(token, out _);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Guarda los correos en memoria para que las pruebas lean el token enviado.</summary>
+public sealed class FakeEmailSender : Pactogg.Api.Infrastructure.Email.IEmailSender
+{
+    public ConcurrentQueue<Pactogg.Api.Infrastructure.Email.EmailMessage> Sent { get; } = new();
+
+    public Task<bool> SendAsync(Pactogg.Api.Infrastructure.Email.EmailMessage message, CancellationToken cancellationToken)
+    {
+        Sent.Enqueue(message);
+        return Task.FromResult(true);
+    }
+
+    /// <summary>Último token enviado a ese correo (la línea "Código: ..." del texto plano).</summary>
+    public string? LastTokenFor(string email, string subjectContains) =>
+        Sent.Reverse()
+            .Where(x => string.Equals(x.To, email, StringComparison.OrdinalIgnoreCase) && x.Subject.Contains(subjectContains, StringComparison.Ordinal))
+            .Select(x => x.TextBody.Split('\n').FirstOrDefault(line => line.StartsWith("Código: ", StringComparison.Ordinal))?["Código: ".Length..].Trim())
+            .FirstOrDefault();
+}
+
+public sealed class FakePushSender : Pactogg.Api.Infrastructure.Push.IPushSender
+{
+    public ConcurrentQueue<(string Token, Pactogg.Api.Infrastructure.Push.PushMessage Message)> Sent { get; } = new();
+    public HashSet<string> Unregistered { get; } = [];
+
+    public bool IsConfigured => true;
+
+    public Task<Pactogg.Api.Infrastructure.Push.PushResult> SendAsync(IReadOnlyCollection<string> tokens, Pactogg.Api.Infrastructure.Push.PushMessage message, CancellationToken cancellationToken)
+    {
+        var invalid = tokens.Where(Unregistered.Contains).ToList();
+        foreach (var token in tokens.Except(invalid))
+        {
+            Sent.Enqueue((token, message));
+        }
+
+        return Task.FromResult(new Pactogg.Api.Infrastructure.Push.PushResult(tokens.Count - invalid.Count, invalid));
     }
 }

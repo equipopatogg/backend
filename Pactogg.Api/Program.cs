@@ -1,3 +1,9 @@
+using Pactogg.Api.Modules.Audit;
+using Pactogg.Api.Modules.Devices;
+using Pactogg.Api.Infrastructure.Push;
+using Pactogg.Api.Infrastructure.Email;
+using Microsoft.AspNetCore.ResponseCompression;
+using Pactogg.Api.Modules.Contracts.Lifecycle;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -66,6 +72,15 @@ builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = 6 * 1024 * 1024;
 });
 
+// BE-05: gzip para respuestas JSON. HTTPS habilitado; /auth queda fuera para no exponer tokens a BREACH.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ["application/json", "application/problem+json", "application/yaml", "text/plain"];
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = System.IO.Compression.CompressionLevel.Fastest);
+
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
@@ -101,6 +116,9 @@ builder.Services.Configure<EvidenceOptions>(builder.Configuration.GetSection(Evi
 builder.Services.Configure<AwsOptions>(builder.Configuration.GetSection(AwsOptions.SectionName));
 builder.Services.Configure<ModerationOptions>(builder.Configuration.GetSection(ModerationOptions.SectionName));
 builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.SectionName));
+builder.Services.Configure<ContractLifecycleOptions>(builder.Configuration.GetSection(ContractLifecycleOptions.SectionName));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.Configure<FirebaseOptions>(builder.Configuration.GetSection(FirebaseOptions.SectionName));
 
 if (builder.Environment.IsProduction()
     && !string.Equals(builder.Configuration["Moderation:Mode"], "Aws", StringComparison.OrdinalIgnoreCase))
@@ -226,7 +244,9 @@ builder.Services.AddSingleton<ILoginAttemptStore, RedisLoginAttemptStore>();
 builder.Services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IGoogleTokenValidator, GoogleTokenValidator>();
-builder.Services.AddSingleton<IAuditService, MongoAuditService>();
+builder.Services.AddSingleton<MongoAuditService>();
+builder.Services.AddSingleton<IAuditService>(sp => sp.GetRequiredService<MongoAuditService>());
+builder.Services.AddSingleton<IAuditReader>(sp => sp.GetRequiredService<MongoAuditService>());
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
 
 builder.Services.AddSingleton<IAmazonS3>(_ =>
@@ -259,8 +279,19 @@ builder.Services.AddScoped<IVoteRepository, MongoVoteRepository>();
 builder.Services.AddScoped<ICommitmentRepository, MongoCommitmentRepository>();
 builder.Services.AddScoped<INotificationRepository, MongoNotificationRepository>();
 builder.Services.AddScoped<IPointsLedgerRepository, MongoPointsLedgerRepository>();
+builder.Services.AddScoped<IDeviceRepository, MongoDeviceRepository>();
+
+// Correo (AUTH-05/06) y push (NOT-05). Sin credenciales no envían nada y la API sigue funcionando.
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<OneTimeTokenStore>();
+builder.Services.AddSingleton<PushQueue>();
+builder.Services.AddHttpClient<IPushSender, FcmPushSender>(client => client.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddHostedService<PushDispatcher>();
 
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<DeviceService>();
+builder.Services.AddScoped<AuditQueryService>();
 builder.Services.AddScoped<GroupService>();
 builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<EvidenceService>();
@@ -272,11 +303,18 @@ builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<PointsService>();
 builder.Services.AddScoped<CommitmentService>();
 builder.Services.AddScoped<FameService>();
+builder.Services.AddScoped<ContractLifecycleService>();
+builder.Services.AddHostedService<ContractDeadlineWorker>();
 
 var app = builder.Build();
 
+// Orden DESC_BACK 9: request-id, logs, compresión, seguridad y CORS, límite, autenticación, autorización,
+// validación/idempotencia. El manejo de errores envuelve todo lo que sigue para responder con el formato estándar.
 app.UseMiddleware<RequestIdMiddleware>();
 app.UseSerilogRequestLogging();
+app.UseWhen(
+    context => !context.Request.Path.StartsWithSegments("/api/v1/auth"),
+    branch => branch.UseResponseCompression());
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<NoSqlKeyValidationMiddleware>();
@@ -300,11 +338,12 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 app.UseAuthentication();
 app.UseMiddleware<RedisRateLimitMiddleware>();
 app.UseAuthorization();
+app.UseMiddleware<IdempotencyMiddleware>();
 
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.6.1",
+    version = "0.8.0",
     status = "ok"
 })).AllowAnonymous();
 
@@ -319,6 +358,8 @@ app.MapVoteEndpoints();
 app.MapPointsEndpoints();
 app.MapCommitmentEndpoints();
 app.MapNotificationEndpoints();
+app.MapDeviceEndpoints();
+app.MapAuditEndpoints();
 app.MapFameEndpoints();
 
 app.Run();

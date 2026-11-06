@@ -28,6 +28,26 @@ public sealed class CreateContractRequest
     public string Source { get; set; } = "manual";
 }
 
+/// <summary>CON-04: cambios parciales mientras nadie lo haya aceptado. version es obligatoria (bloqueo optimista).</summary>
+public sealed class UpdateContractRequest
+{
+    [Required]
+    public int? Version { get; set; }
+
+    [StringLength(60, MinimumLength = 1)]
+    public string? Game { get; set; }
+
+    [StringLength(280, MinimumLength = 1)]
+    public string? Condition { get; set; }
+
+    [StringLength(80, MinimumLength = 3)]
+    public string? Reward { get; set; }
+
+    public DateTimeOffset? Deadline { get; set; }
+
+    public int? BondRequired { get; set; }
+}
+
 public sealed class ContractResponse
 {
     public string Id { get; init; } = string.Empty;

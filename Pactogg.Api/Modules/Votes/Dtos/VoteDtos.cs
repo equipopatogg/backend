@@ -40,15 +40,16 @@ public sealed class VoteSummaryResponse
     public bool IAmJuror { get; init; }
     public bool IVoted { get; init; }
     public bool AdminCanResolve { get; init; }
+    public bool VotingExtended { get; init; }
+    public DateTime? AdminDeadlineAt { get; init; }
     /// <summary>Solo cuando la votación ya cerró.</summary>
     public int? LegitVotes { get; init; }
     public int? CheatVotes { get; init; }
 }
 
+/// <summary>Voto revelado al cerrar. Anónimo (CLARIFICACION #84): no incluye quién lo emitió.</summary>
 public sealed class RevealedVoteResponse
 {
-    public string JurorId { get; init; } = string.Empty;
-    public string Nickname { get; init; } = string.Empty;
     public string Vote { get; init; } = string.Empty;
     public string? Comment { get; init; }
     public DateTime CreatedAt { get; init; }

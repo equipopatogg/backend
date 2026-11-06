@@ -1,3 +1,4 @@
+using Pactogg.Api.Common.Extensions;
 using Pactogg.Api.Common;
 using Pactogg.Api.Modules.Auth.Dtos;
 
@@ -102,6 +103,49 @@ public static class AuthEndpoints
             .WithName("Logout")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        // ---- AUTH-05: verificación de correo ----
+        group.MapPost("/verify-email", async (TokenRequest request, AccountService service, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.VerifyEmailAsync(request, cancellationToken)))
+            .AllowAnonymous()
+            .AddEndpointFilter<ValidationFilter<TokenRequest>>()
+            .WithName("VerifyEmail")
+            .Produces<VerifyEmailResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
+        group.MapPost("/verify-email/resend", async (AccountService service, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                await service.ResendVerificationAsync(context.User.GetRequiredObjectId(), cancellationToken);
+                return Results.Accepted();
+            })
+            .RequireAuthorization()
+            .WithName("ResendVerificationEmail")
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests);
+
+        // ---- AUTH-06 / AUTH-07: recuperación de contraseña ----
+        group.MapPost("/forgot-password", async (ForgotPasswordRequest request, AccountService service, CancellationToken cancellationToken) =>
+            {
+                await service.ForgotPasswordAsync(request, cancellationToken);
+                return Results.Accepted();
+            })
+            .AllowAnonymous()
+            .AddEndpointFilter<ValidationFilter<ForgotPasswordRequest>>()
+            .WithName("ForgotPassword")
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests);
+
+        group.MapPost("/reset-password", async (ResetPasswordRequest request, AccountService service, CancellationToken cancellationToken) =>
+            {
+                await service.ResetPasswordAsync(request, cancellationToken);
+                return ApiResults.Ok(new { password_reset = true });
+            })
+            .AllowAnonymous()
+            .AddEndpointFilter<ValidationFilter<ResetPasswordRequest>>()
+            .WithName("ResetPassword")
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         return app;
     }

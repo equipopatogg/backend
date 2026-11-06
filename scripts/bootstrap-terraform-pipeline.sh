@@ -5,7 +5,8 @@
 #   cd /mnt/g/PactoGG && bash scripts/bootstrap-terraform-pipeline.sh
 #
 # 1. Asegura Terraform >= 1.10 (bloqueo nativo de S3).
-# 2. Aplica deploy/bootstrap: bucket del estado, proveedor OIDC de GitHub y rol pactogg-github-terraform.
+# 2. Aplica deploy/bootstrap: bucket del estado, proveedor OIDC de GitHub, rol pactogg-github-terraform,
+#    AWS Budgets (alertas 50/80/100 %) y CloudTrail. Pide el correo de alertas si no viene en BUDGET_ALERT_EMAIL.
 #    Si el proveedor OIDC ya existe (lo creó deploy/terraform), lo importa en vez de duplicarlo.
 # 3. Migra el estado local de deploy/terraform al bucket S3 y saca de él el proveedor OIDC.
 # 4. Muestra el plan (debe salir sin cambios o casi) y configura los secretos de GitHub si tienes `gh`.
@@ -55,6 +56,11 @@ if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_AR
     terraform import -input=false aws_iam_openid_connect_provider.github "$OIDC_ARN"
   fi
 fi
+# Correo para las alertas de AWS Budgets (50/80/100 %). Se puede pasar como BUDGET_ALERT_EMAIL=... bash ...
+if [[ -z "${BUDGET_ALERT_EMAIL:-}" ]]; then
+  read -r -p "Correo para alertas de gasto de AWS (cuenta del equipo): " BUDGET_ALERT_EMAIL
+fi
+export TF_VAR_budget_alert_email="$BUDGET_ALERT_EMAIL"
 terraform apply -input=false -auto-approve
 STATE_BUCKET="$(terraform output -raw state_bucket)"
 TF_ROLE_ARN="$(terraform output -raw terraform_role_arn)"

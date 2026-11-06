@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: PactoGG API
   version: 1.0.0
-  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1).
+  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1); reglas de votación, plazos, idempotencia y límites de los documentos (v0.7.0); verificación de correo, recuperación y cambio de contraseña, perfil público, editar/cancelar retos, auditoría y push con FCM (v0.8.0).
 servers:
   - url: https://52-3-200-211.sslip.io
     description: Producción AWS (HTTPS, Let's Encrypt; cambia si se recrea la infraestructura)
@@ -20,6 +20,8 @@ tags:
   - name: Commitments
   - name: Notifications
   - name: Fame
+  - name: Devices
+  - name: Audit
 paths:
   /api/v1/auth/register:
     post:
@@ -155,6 +157,88 @@ paths:
       responses:
         '204': { description: Sesión cerrada }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/verify-email:
+    post:
+      tags: [Auth]
+      operationId: verifyEmail
+      summary: Verificar el correo con el token del enlace (AUTH-05)
+      description: >-
+        El token llega por correo (deep link pactogg://auth/verify-email?token=... o código para pegar). Es de un solo uso y caduca en 24 h.
+        Verificar es obligatorio para crear o unirse a grupos y para ser jurado (CLARIFICACION #5) cuando Auth:RequireVerifiedEmail está activo.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenRequest' }
+      responses:
+        '200':
+          description: Correo verificado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { email_verified: { type: boolean } } }
+        '400': { description: 'INVALID_OR_EXPIRED_TOKEN', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/verify-email/resend:
+    post:
+      tags: [Auth]
+      operationId: resendVerificationEmail
+      summary: Reenviar el correo de verificación (AUTH-05)
+      description: Máximo 3 por hora por usuario. 409 EMAIL_ALREADY_VERIFIED si ya está verificado.
+      security:
+        - BearerAuth: []
+      responses:
+        '202': { description: Correo en camino }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: forgotPassword
+      summary: Pedir el enlace para restablecer la contraseña (AUTH-06)
+      description: >-
+        Siempre responde 202 exista o no la cuenta (evita enumerar correos). Máximo 3 correos por hora por cuenta.
+        El enlace (pactogg://auth/reset-password?token=...) sirve una vez y caduca en 1 hora (CLARIFICACION #11).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '202': { description: 'Si la cuenta existe, se envió el correo' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: Cambiar la contraseña con el token del correo (AUTH-07)
+      description: Revoca todas las sesiones y marca el correo como verificado.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '200':
+          description: Contraseña cambiada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { password_reset: { type: boolean } } }
+        '400': { description: 'INVALID_OR_EXPIRED_TOKEN', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/users/me:
     get:
       tags: [Users]
@@ -230,6 +314,88 @@ paths:
                       data: { $ref: '#/components/schemas/NicknameAvailability' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/users/{id}:
+    get:
+      tags: [Users]
+      operationId: getPublicProfile
+      summary: Perfil público de alguien de tus grupos (USR-05)
+      description: Apodo, avatar, estadísticas e Índice de Palabra; nunca el correo (CLARIFICACION #14). 403 NO_SHARED_GROUP si no comparten grupo.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+      responses:
+        '200':
+          description: Perfil público
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublicProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/users/me/password:
+    post:
+      tags: [Users]
+      operationId: changePassword
+      summary: Cambiar la contraseña con la actual
+      description: >-
+        Revoca todas las sesiones y devuelve una sesión nueva para este dispositivo (guarda los tokens nuevos).
+        422 INVALID_CREDENTIALS si la actual no coincide; 409 PASSWORD_NOT_SET en cuentas creadas con Google.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          description: Sesión nueva
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/users/me/consent:
+    post:
+      tags: [Users]
+      operationId: acceptConsent
+      summary: Aceptar la versión vigente del aviso de privacidad (USR-07)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsentRequest' }
+      responses:
+        '200':
+          description: Aceptación registrada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { version: { type: string }, accepted_at: { type: string, format: date-time } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/groups:
     get:
       tags: [Groups]
@@ -381,6 +547,7 @@ paths:
       tags: [Contracts]
       operationId: createContract
       summary: Crear contrato en un grupo
+      description: El grupo necesita al menos 3 miembros (CLARIFICACION #22 y #75); si no, 409 GROUP_TOO_SMALL.
       security:
         - BearerAuth: []
       requestBody:
@@ -451,6 +618,7 @@ paths:
       tags: [Contracts]
       operationId: createGroupContract
       summary: Crear contrato usando el grupo de la ruta
+      description: El grupo necesita al menos 3 miembros (CLARIFICACION #22 y #75); si no, 409 GROUP_TOO_SMALL.
       security:
         - BearerAuth: []
       parameters:
@@ -497,6 +665,52 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Contracts]
+      operationId: updateContract
+      summary: Editar un reto que nadie ha aceptado (CON-04)
+      description: Solo quien lo publicó (403 NOT_CONTRACT_OWNER), solo en open y con la version que vio la app (409 si cambió). Campos omitidos no cambian.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateContractRequest' }
+      responses:
+        '200':
+          description: Reto actualizado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Contract' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Contracts]
+      operationId: cancelContract
+      summary: Cancelar un reto que nadie ha aceptado (CON-05)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+        - name: version
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '204': { description: Reto cancelado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/contracts/{id}/accept:
     post:
       tags: [Contracts]
@@ -512,6 +726,7 @@ paths:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ContractId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: false
         content:
@@ -729,11 +944,12 @@ paths:
       operationId: castVote
       summary: Emitir voto de jurado (VOT-02)
       description: >-
-        Un voto por jurado, inmutable (legit o cheat, comentario opcional ≤140 moderado). Cuando un lado alcanza el consenso del grupo sobre los jurados asignados, el reto se cierra en una transacción: fulfilled devuelve la fianza (bond_release) y crea el compromiso; cheating pasa la fianza al retador (bond_forfeit). Si todos votan sin consenso, needs_admin = true.
+        Un voto por jurado, inmutable (legit o cheat, comentario opcional ≤140 moderado). Consenso (CLARIFICACION #79–83): votos_del_lado × 100 ≥ consenso × votos emitidos, con quórum de la mitad de los jurados asignados; se cierra antes solo si el resultado ya no puede cambiar. fulfilled libera la fianza, paga un premio igual (reward) y crea el compromiso; cheating pasa la fianza al retador. Empate: decide un administrador que no sea parte (needs_admin = true) o, si no hay, se asigna un jurado adicional una sola vez. A las 48 h sin quórum se extiende 24 h una vez; luego decide el administrador en 48 h o el reto se cancela con devolución. Fuera de plazo → 409 VOTING_CLOSED.
       security:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ContractId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -787,11 +1003,12 @@ paths:
       operationId: resolveVoting
       summary: El administrador decide (VOT-04)
       description: >-
-        Solo admin del grupo y solo si no hay jurados, todos votaron sin consenso o venció el plazo de 48 h; si no, 409 VOTING_NOT_FINISHED.
+        Solo un admin del grupo que no sea parte del reto (403 ADMIN_IS_PARTY) y solo durante la fase del administrador (empate, sin quórum tras la extensión o sin jurados); si no, 409 VOTING_NOT_FINISHED. Si no decide en 48 h, el reto queda cancelled y se devuelve la fianza.
       security:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ContractId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1025,6 +1242,22 @@ paths:
                               unread_count: { type: integer }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/notifications/{id}:
+    delete:
+      tags: [Notifications]
+      operationId: deleteNotification
+      summary: Eliminar un aviso (NOT-04)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+      responses:
+        '204': { description: Aviso eliminado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/notifications/{id}/read:
     patch:
       tags: [Notifications]
@@ -1102,6 +1335,126 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/devices/me:
+    put:
+      tags: [Devices]
+      operationId: registerDevice
+      summary: Registrar o actualizar el token de push del dispositivo (DEV-01)
+      description: Llamar al iniciar sesión y cada vez que FCM entregue un token nuevo (onNewToken). Si el token estaba en otra cuenta, se reasigna.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterDeviceRequest' }
+      responses:
+        '200':
+          description: Dispositivo registrado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Device' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Devices]
+      operationId: removeDevice
+      summary: Quitar el dispositivo al cerrar sesión (DEV-02)
+      description: Con fcm_token quita ese dispositivo; sin él, todos los del usuario.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: fcm_token
+          in: query
+          required: false
+          schema: { type: string, maxLength: 4096 }
+      responses:
+        '204': { description: Dispositivo quitado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/devices/me/preferences:
+    get:
+      tags: [Devices]
+      operationId: getNotificationPreferences
+      summary: Tipos de aviso push activos
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Preferencias
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationPreferences' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Devices]
+      operationId: updateNotificationPreferences
+      summary: Activar o desactivar cada tipo de aviso push (DEV-03)
+      description: >-
+        retos (contract_*), votos (vote_*), torneos (tournament_*) y compromisos (commitment_*). Los campos omitidos no cambian.
+        El centro de notificaciones siempre guarda el aviso; esto solo controla el push.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationPreferences' }
+      responses:
+        '200':
+          description: Preferencias actualizadas
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationPreferences' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/groups/{gid}/audit:
+    get:
+      tags: [Audit]
+      operationId: listGroupAudit
+      summary: Historial inmutable del grupo, solo administradores (AUD-01, ID 160)
+      description: Más reciente primero. Cada evento trae el hash encadenado con el anterior. La auditoría no se modifica ni se elimina (AUD-02).
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - name: entity
+          in: query
+          required: false
+          schema: { type: string, enum: [contract, group, member, commitment, evidence, vote, tournament] }
+        - name: entity_id
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Eventos
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 components:
   securitySchemes:
     BearerAuth:
@@ -1109,6 +1462,15 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Obligatoria en acciones críticas (aceptar, votar, resolver). 8–128 caracteres [A-Za-z0-9_-].
+        La primera respuesta 2xx se guarda 24 h y se repite (cabecera Idempotent-Replayed: true) si llega la misma clave;
+        sin cabecera → 400 IDEMPOTENCY_KEY_REQUIRED; misma clave en proceso → 409; misma clave con otro cuerpo → 422 IDEMPOTENCY_KEY_IN_USE.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,128}$' }
     GroupId:
       name: gid
       in: path
@@ -1294,8 +1656,8 @@ components:
       type: object
       additionalProperties: false
       properties:
-        jurors: { type: integer, minimum: 1, maximum: 9, default: 3 }
-        consensus: { type: number, minimum: 0.51, maximum: 1, default: 0.66 }
+        jurors: { type: integer, minimum: 1, maximum: 7, default: 3 }
+        consensus: { type: number, minimum: 0.5, maximum: 1, default: 0.66 }
         bond_options:
           type: array
           items: { type: integer, minimum: 0 }
@@ -1368,6 +1730,100 @@ components:
       properties:
         nickname: { type: string, pattern: '^[A-Za-z0-9_.-]{3,24}$' }
         avatar_id: { type: string, pattern: '^[a-z0-9_-]{1,32}$' }
+    TokenRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: { type: string, minLength: 16, maxLength: 128 }
+    ForgotPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [token, new_password]
+      properties:
+        token: { type: string, minLength: 16, maxLength: 128 }
+        new_password: { type: string, minLength: 12, maxLength: 128 }
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, minLength: 1, maxLength: 128 }
+        new_password: { type: string, minLength: 12, maxLength: 128 }
+        device_id: { type: string, maxLength: 128 }
+    ConsentRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: string, maxLength: 32 }
+    PublicProfile:
+      type: object
+      properties:
+        id: { type: string }
+        nickname: { type: string }
+        avatar_id: { type: string }
+        stats:
+          type: object
+          properties:
+            completed: { type: integer }
+            cheated: { type: integer }
+            streak: { type: integer }
+            trophies: { type: integer }
+            word_index: { type: integer, minimum: 0, maximum: 100 }
+        created_at: { type: string, format: date-time }
+    UpdateContractRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, minimum: 1 }
+        game: { type: string, minLength: 1, maxLength: 60 }
+        condition: { type: string, minLength: 1, maxLength: 280 }
+        reward: { type: string, minLength: 3, maxLength: 80 }
+        deadline: { type: string, format: date-time }
+        bond_required: { type: integer }
+    RegisterDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [fcm_token, platform]
+      properties:
+        fcm_token: { type: string, minLength: 20, maxLength: 4096 }
+        platform: { type: string, enum: [android, ios, web] }
+        app_version: { type: string, maxLength: 32 }
+    Device:
+      type: object
+      properties:
+        id: { type: string }
+        platform: { type: string }
+        app_version: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
+    NotificationPreferences:
+      type: object
+      additionalProperties: false
+      properties:
+        retos: { type: boolean }
+        votos: { type: boolean }
+        torneos: { type: boolean }
+        compromisos: { type: boolean }
+    AuditEvent:
+      type: object
+      properties:
+        id: { type: string }
+        action: { type: string, example: contract.created }
+        actor_id: { type: string, nullable: true }
+        actor_nickname: { type: string, nullable: true }
+        entity_type: { type: string }
+        entity_id: { type: string, nullable: true }
+        payload: { type: object, additionalProperties: true }
+        hash: { type: string }
+        created_at: { type: string, format: date-time }
     Profile:
       type: object
       properties:
@@ -1385,6 +1841,7 @@ components:
             trophies: { type: integer }
             word_index: { type: integer, minimum: 0, maximum: 100 }
         groups_count: { type: integer }
+        notification_preferences: { $ref: '#/components/schemas/NotificationPreferences' }
         created_at: { type: string, format: date-time }
     NicknameAvailability:
       type: object
@@ -1440,13 +1897,14 @@ components:
         i_am_juror: { type: boolean }
         i_voted: { type: boolean }
         admin_can_resolve: { type: boolean }
+        voting_extended: { type: boolean }
+        admin_deadline_at: { type: string, format: date-time, nullable: true }
         legit_votes: { type: integer, nullable: true, description: Solo al cerrar }
         cheat_votes: { type: integer, nullable: true, description: Solo al cerrar }
     RevealedVote:
       type: object
+      description: Anónimo (CLARIFICACION #84); no indica qué jurado votó.
       properties:
-        juror_id: { type: string }
-        nickname: { type: string }
         vote: { type: string, enum: [legit, cheat] }
         comment: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
@@ -1460,7 +1918,7 @@ components:
         legit_votes: { type: integer }
         cheat_votes: { type: integer }
         bond_required: { type: integer }
-        bond_movement: { type: string, enum: [bond_release, bond_forfeit, none] }
+        bond_movement: { type: string, enum: [bond_release_and_reward, bond_forfeit, none] }
         challenger_id: { type: string }
         executor_id: { type: string, nullable: true }
         reward: { type: string }

@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace Pactogg.Api.Infrastructure.Mongo;
@@ -156,6 +157,32 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Name = "ix_commitments_group_creditor_status" })
         ], cancellationToken);
 
+        await _context.AuditEvents.Indexes.CreateOneAsync(
+            new CreateIndexModel<Infrastructure.Audit.AuditEvent>(
+                Builders<Infrastructure.Audit.AuditEvent>.IndexKeys.Ascending(x => x.GroupId).Descending(x => x.Id),
+                new CreateIndexOptions { Name = "ix_audit_group_id" }),
+            cancellationToken: cancellationToken);
+
+        await _context.Devices.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Devices.Device>(
+                Builders<Modules.Devices.Device>.IndexKeys.Ascending(x => x.FcmToken),
+                new CreateIndexOptions { Name = "ux_devices_fcm_token", Unique = true }),
+            new CreateIndexModel<Modules.Devices.Device>(
+                Builders<Modules.Devices.Device>.IndexKeys.Ascending(x => x.UserId),
+                new CreateIndexOptions { Name = "ix_devices_user" })
+        ], cancellationToken);
+
+        // CLARIFICACION #118: retención de 30 días. El índice TTL anterior (90 d) se reemplaza.
+        try
+        {
+            await _context.Notifications.Indexes.DropOneAsync("ttl_notifications_90d", cancellationToken);
+        }
+        catch (MongoCommandException)
+        {
+            // No existía: instalación nueva.
+        }
+
         await _context.Notifications.Indexes.CreateManyAsync(
         [
             new CreateIndexModel<Modules.Notifications.Domain.Notification>(
@@ -164,7 +191,15 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Name = "ix_notifications_user_read" }),
             new CreateIndexModel<Modules.Notifications.Domain.Notification>(
                 Builders<Modules.Notifications.Domain.Notification>.IndexKeys.Ascending(x => x.CreatedAt),
-                new CreateIndexOptions { Name = "ttl_notifications_90d", ExpireAfter = TimeSpan.FromDays(90) })
+                new CreateIndexOptions { Name = "ttl_notifications_30d", ExpireAfter = TimeSpan.FromDays(30) }),
+            new CreateIndexModel<Modules.Notifications.Domain.Notification>(
+                Builders<Modules.Notifications.Domain.Notification>.IndexKeys.Ascending(x => x.DedupeKey),
+                new CreateIndexOptions<Modules.Notifications.Domain.Notification>
+                {
+                    Name = "ux_notifications_dedupe",
+                    Unique = true,
+                    PartialFilterExpression = Builders<Modules.Notifications.Domain.Notification>.Filter.Type(x => x.DedupeKey, BsonType.String)
+                })
         ], cancellationToken);
     }
 }

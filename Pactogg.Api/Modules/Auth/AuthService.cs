@@ -25,6 +25,7 @@ public sealed class AuthService
     private readonly AuthOptions _authOptions;
     private readonly JwtOptions _jwtOptions;
     private readonly IGoogleTokenValidator _google;
+    private readonly AccountService _account;
 
     public AuthService(
         IUserRepository users,
@@ -36,8 +37,10 @@ public sealed class AuthService
         IAuditService audit,
         IOptions<AuthOptions> authOptions,
         IOptions<JwtOptions> jwtOptions,
-        IGoogleTokenValidator google)
+        IGoogleTokenValidator google,
+        AccountService account)
     {
+        _account = account;
         _google = google;
         _users = users;
         _refreshTokens = refreshTokens;
@@ -98,6 +101,8 @@ public sealed class AuthService
 
         await _users.CreateAsync(user, cancellationToken);
         var session = await CreateSessionAsync(user, request.DeviceId, cancellationToken);
+        // AUTH-05: el correo de verificación sale al registrarse (best-effort; se puede reenviar).
+        await _account.SendVerificationAsync(user, cancellationToken);
         await _audit.AppendAsync("user.registered", user.Id, "user", user.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
         return session;
     }
@@ -217,6 +222,15 @@ public sealed class AuthService
     {
         var hash = _tokens.HashRefreshToken(request.RefreshToken);
         var stored = await _refreshTokens.GetByHashAsync(hash, cancellationToken);
+        if (stored is not null && stored.RevokedAt is not null && stored.Rotated)
+        {
+            // CLARIFICACION #10: un refresh ya rotado que vuelve a llegar se considera robado.
+            // Se revocan todas las sesiones del usuario y debe iniciar sesión de nuevo.
+            await _refreshTokens.RevokeAllForUserAsync(stored.UserId, DateTime.UtcNow, cancellationToken);
+            await _audit.AppendAsync("auth.refresh_reuse_detected", stored.UserId, "refresh_token", stored.Id, null, new { user_id = stored.UserId.ToString() }, cancellationToken);
+            throw ApiException.Unauthorized();
+        }
+
         if (stored is null || stored.RevokedAt is not null || stored.ExpiresAt <= DateTime.UtcNow)
         {
             throw ApiException.Unauthorized();
@@ -228,7 +242,7 @@ public sealed class AuthService
             throw ApiException.Unauthorized();
         }
 
-        await _refreshTokens.RevokeAsync(stored.Id, DateTime.UtcNow, cancellationToken);
+        await _refreshTokens.MarkRotatedAsync(stored.Id, DateTime.UtcNow, cancellationToken);
         var session = await CreateSessionAsync(user, request.DeviceId ?? stored.DeviceId, cancellationToken);
         await _audit.AppendAsync("auth.refresh", user.Id, "refresh_token", stored.Id, null, new { user_id = user.Id.ToString() }, cancellationToken);
         return session;
@@ -263,6 +277,10 @@ public sealed class AuthService
 
         await _audit.AppendAsync("auth.logout", userId, "user", userId, null, new { all = request?.All == true }, cancellationToken);
     }
+
+    /// <summary>Sesión nueva después de cambiar la contraseña (las anteriores ya se revocaron).</summary>
+    public Task<SessionResponse> IssueSessionAsync(User user, string? deviceId, CancellationToken cancellationToken) =>
+        CreateSessionAsync(user, deviceId, cancellationToken);
 
     private async Task<SessionResponse> CreateSessionAsync(User user, string? deviceId, CancellationToken cancellationToken)
     {

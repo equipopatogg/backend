@@ -32,6 +32,11 @@ public sealed class Notification
     [BsonElement("commitment_id")]
     public ObjectId? CommitmentId { get; set; }
 
+    /// <summary>Clave de idempotencia (CLARIFICACION #119): el mismo evento no genera dos avisos para la misma persona.</summary>
+    [BsonElement("dedupe_key")]
+    [BsonIgnoreIfNull]
+    public string? DedupeKey { get; set; }
+
     [BsonElement("read_at")]
     public DateTime? ReadAt { get; set; }
 

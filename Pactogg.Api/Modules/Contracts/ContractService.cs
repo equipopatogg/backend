@@ -39,6 +39,8 @@ public sealed class ContractService
         _audit = audit;
     }
 
+    public const int MinMembersForContracts = 3;
+
     public async Task<ContractResponse> CreateAsync(ObjectId userId, CreateContractRequest request, CancellationToken cancellationToken)
     {
         if (!ObjectId.TryParse(request.GroupId, out var groupId))
@@ -52,6 +54,12 @@ public sealed class ContractService
         if (await _members.GetAsync(groupId, userId, cancellationToken) is null)
         {
             throw ApiException.Forbidden(ErrorCodes.NotGroupMember, "No perteneces a este grupo.");
+        }
+
+        // CLARIFICACION #22 y #75: hace falta al menos 3 miembros (retador, retado y un jurado).
+        if (group.MemberCount < MinMembersForContracts)
+        {
+            throw ApiException.Conflict(ErrorCodes.GroupTooSmall, $"El grupo necesita al menos {MinMembersForContracts} miembros para lanzar retos.");
         }
 
         if (!string.Equals(request.Source, "manual", StringComparison.OrdinalIgnoreCase))
@@ -271,6 +279,72 @@ public sealed class ContractService
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(rejected.GroupId), cancellationToken);
 
         return ToResponse(rejected);
+    }
+
+    /// <summary>CON-04: el retador edita su reto mientras siga abierto y nadie lo haya aceptado.</summary>
+    public async Task<ContractResponse> UpdateAsync(ObjectId userId, string id, UpdateContractRequest request, CancellationToken cancellationToken)
+    {
+        var contract = await RequireContractForMemberAsync(userId, id, cancellationToken);
+        RequireChallenger(contract, userId);
+        EnsureOpen(contract, new ContractActionRequest { Version = request.Version });
+        if (contract.AcceptedBy is not null)
+        {
+            throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto ya fue aceptado.");
+        }
+
+        var group = await _groups.GetByIdAsync(contract.GroupId, cancellationToken) ?? throw ApiException.NotFound("El grupo no existe.");
+        var game = request.Game?.Trim() ?? contract.Game;
+        var condition = request.Condition?.Trim() ?? contract.Condition;
+        var reward = request.Reward is null ? contract.Reward : ContractRules.NormalizeReward(request.Reward);
+        var deadline = request.Deadline?.UtcDateTime ?? contract.Deadline;
+        var bond = request.BondRequired ?? contract.BondRequired;
+
+        if (deadline <= DateTime.UtcNow)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "El deadline debe ser futuro.");
+        }
+
+        if (bond != contract.BondRequired && !group.Settings.BondOptions.Contains(bond))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.InvalidBond, "La fianza no está permitida por el grupo.");
+        }
+
+        if (request.Condition is not null || request.Reward is not null)
+        {
+            var conditionModeration = await _moderation.ModerateTextAsync(condition, cancellationToken);
+            var rewardModeration = await _moderation.ModerateTextAsync(reward, cancellationToken);
+            if (!conditionModeration.Approved || !rewardModeration.Approved)
+            {
+                var labels = conditionModeration.Labels.Concat(rewardModeration.Labels).Distinct().ToArray();
+                throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El contrato fue rechazado por moderación.", new { labels });
+            }
+        }
+
+        var updated = await _contracts.TryUpdateOpenAsync(contract.Id, contract.Version, game, condition, reward, deadline, bond, DateTime.UtcNow, cancellationToken)
+            ?? throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto cambió; recarga e intenta de nuevo.");
+        await _audit.AppendAsync("contract.updated", userId, "contract", updated.Id, updated.GroupId, new { contract_id = updated.Id.ToString(), version = updated.Version }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(updated.GroupId), cancellationToken);
+        return ToResponse(updated);
+    }
+
+    /// <summary>CON-05: el retador cancela un reto que nadie ha aceptado.</summary>
+    public async Task CancelAsync(ObjectId userId, string id, int? version, CancellationToken cancellationToken)
+    {
+        var contract = await RequireContractForMemberAsync(userId, id, cancellationToken);
+        RequireChallenger(contract, userId);
+        EnsureOpen(contract, new ContractActionRequest { Version = version });
+        var cancelled = await _contracts.TryCancelOpenAsync(contract.Id, contract.Version, DateTime.UtcNow, cancellationToken)
+            ?? throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto ya fue aceptado o cambió; recarga e intenta de nuevo.");
+        await _audit.AppendAsync("contract.cancelled", userId, "contract", cancelled.Id, cancelled.GroupId, new { contract_id = cancelled.Id.ToString() }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(cancelled.GroupId), cancellationToken);
+    }
+
+    private static void RequireChallenger(Contract contract, ObjectId userId)
+    {
+        if (contract.ChallengerId != userId)
+        {
+            throw ApiException.Forbidden(ErrorCodes.NotContractOwner, "Solo quien publicó el reto puede cambiarlo.");
+        }
     }
 
     private static void EnsureOpen(Contract contract, ContractActionRequest? request)

@@ -173,6 +173,16 @@
 | F2-D37 | Pipeline con Semgrep, Dockle y compuerta `quality-gate` además de CodeQL y Trivy | Plan del sprint 2 ("Semgrep, Trivy, Dockle y compuerta") | Aprobada |
 | F2-D38 | Script de la BD `database/mongo-init.js` con validadores en modo `warn` | Plan del sprint 2 ("Script de la BD en el repositorio") | Aprobada |
 | F2-D39 | La imagen Docker excluye `appsettings.*.local.json` y otros secretos locales | Revisión de seguridad: el build local podía meter la cadena de Atlas en la imagen | Aprobada |
+| F2-D40 | Los documentos (CLARIFICACION, Descripción del Backend, Stack, Componentes, CRUD, Requerimientos) mandan sobre el Sprint Planning | Instrucción del PO del 2026-11-05 | Aprobada |
+| F2-D41 | Consenso sobre votos emitidos con quórum de la mitad; extensión única de 24 h; fase del administrador de 48 h y cancelación con devolución; empate por admin no parte o jurado adicional único; tarea programada `ContractDeadlineWorker` cada 5 min | CLARIFICACION #79–84 y DESC_BACK 7.6 | Aprobada |
+| F2-D42 | Reto cumplido: libera fianza + premio igual (`reward`); vencido sin evidencia → `expired` y fianza al retador; mínimo 3 miembros para lanzar retos; jurados 1–7 y consenso 0.50–1.0; votos revelados anónimos | CLARIFICACION #22, #36, #72, #75, #84, #89 | Aprobada |
+| F2-D43 | Idempotency-Key obligatoria en aceptar, votar y resolver (Redis 24 h); detección de reutilización del refresh (revoca todas las sesiones); JSON máximo 1 MB; gzip fuera de `/auth`; avisos con retención de 30 días y clave de deduplicación | DESC_BACK 9, CLARIFICACION #10, #118–119 | Aprobada |
+| F2-D44 | Pipeline: Gitleaks, Checkov, SBOM CycloneDX, SonarCloud (se activa con `SONAR_TOKEN`), OWASP ZAP tras el smoke test, Dependabot y acciones fijadas por SHA. Bootstrap: AWS Budgets 50/80/100 % (neto y bruto) y CloudTrail siempre activo | CLARIFICACION (CI/CD, #131–132) y DESC_BACK 12 | Aprobada |
+| F2-D46 | Correo por SMTP (SES o el correo del proyecto) con `System.Net.Mail`; sin host configurado no se envía y `Auth:RequireVerifiedEmail` queda en `false` hasta configurarlo en producción | NuGet no tiene paquete nuevo disponible en este entorno; SES por SMTP cumple CLARIFICACION #5 | Aprobada |
+| F2-D47 | Tokens de verificación y recuperación en Redis (solo SHA-256, un solo uso, 24 h / 1 h) | CLARIFICACION seguridad: token de un solo uso, hasheado y con caducidad | Aprobada |
+| F2-D48 | Push con FCM HTTP v1 sin SDK (JWT RS256 de la cuenta de servicio), cola en memoria y preferencias por categoría | Evita una dependencia nueva; el aviso queda en el centro de notificaciones aunque el push esté apagado | Aprobada |
+| F2-D49 | Solo un refresh **rotado** que reaparece revoca todas las sesiones; los revocados por logout o cambio de contraseña solo dan 401 | Evita cerrar la sesión nueva tras cambiar la contraseña (CLARIFICACION #10) | Aprobada |
+| F2-D45 | La numeración de versiones ya publicada (0.4–0.6) no se reescribe; la matriz 0.1–0.4 del documento se cubre por contenido, no por número | Decisión del PO del 2026-11-05 | Aprobada |
 
 ### 2.1 Registro de aprobación de la Fase 2
 
@@ -348,6 +358,8 @@ cd deploy/terraform && terraform fmt -check -recursive && terraform validate
 | 2026-10-30 | 0.1.1 | Verificación de restore, build, API y auditoría de dependencias; paquetes endurecidos sin CVEs altas | Agente OpenCode |
 | 2026-11-02 | 0.2.0 | Fase 2: siete endpoints, auth/grupos/contratos/evidencias/torneos, moderación, S3, OpenAPI, Docker/Terraform y 42 pruebas en verde | Agente OpenCode |
 | 2026-11-02 | 0.3.0 | Terraform AWS completo en `deploy/terraform`, pipeline `backend-ci-cd.yml`, pruebas funcionales en los 7 proyectos y moderación antes de S3; 49 pruebas en verde y 1 omitida | Agente OpenCode |
+| 2026-11-05 | 0.8.0 | Adelanto del sprint 3: verificación de correo, recuperación y cambio de contraseña, perfil público, aviso de privacidad, editar/cancelar retos, auditoría del grupo, borrar avisos, dispositivos y push con FCM; 96 pruebas; F2-D46 a F2-D49 | Claude / PO David |
+| 2026-11-05 | 0.7.0 | Alineación con los documentos: reglas de votación y plazos, expiración, premio por reto cumplido, mínimo 3 miembros, idempotencia, reutilización de refresh, gzip, JSON 1 MB, avisos 30 d sin duplicados, pipeline (Gitleaks, Checkov, SBOM, SonarCloud, ZAP, Dependabot, SHA) y Budgets/CloudTrail; F2-D40 a F2-D45 | Claude / PO David |
 | 2026-11-04 | 0.6.1 | Cierre del sprint 2 según el plan nuevo: login con Google, Semgrep + Dockle + compuerta, `infra.yml` (crear/eliminar), bootstrap de estado remoto, script de la BD, SDD 001–003 y plan de pruebas; F2-D35 a F2-D39 | Claude / PO David |
 | 2026-11-04 | 0.6.0 | 15 endpoints de jurado, votación con cierre transaccional de fianza, puntos (saldo y ranking), compromisos, avisos en la app y Muro de la Fama; decisiones F2-D29 a F2-D34; flujo de ramas y PR | Claude / PO David |
 | 2026-11-04 | 0.5.0 | 11 endpoints: perfil (ver/editar/apodo libre), mis grupos, detalle, unirse con código, miembros, tablero de retos, detalle de reto, aceptar con fianza transaccional y `points_ledger`, rechazar; caché por versiones; decisiones F2-D23 a F2-D28 | Claude / PO David |

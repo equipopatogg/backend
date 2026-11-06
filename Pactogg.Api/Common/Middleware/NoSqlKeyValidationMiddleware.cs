@@ -1,11 +1,18 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.Features;
 using Pactogg.Api.Common;
 
 namespace Pactogg.Api.Common.Middleware;
 
+/// <summary>
+/// Rechaza claves peligrosas para NoSQL ($, puntos) y limita el JSON a 1 MB (DESC_BACK 9).
+/// Las subidas multipart conservan su propio límite de 5 MB + margen.
+/// </summary>
 public sealed class NoSqlKeyValidationMiddleware
 {
+    public const int MaxJsonBytes = 1024 * 1024;
+
     private readonly RequestDelegate _next;
 
     public NoSqlKeyValidationMiddleware(RequestDelegate next)
@@ -21,6 +28,17 @@ public sealed class NoSqlKeyValidationMiddleware
             return;
         }
 
+        if (context.Request.ContentLength > MaxJsonBytes)
+        {
+            throw ApiException.PayloadTooLarge("El cuerpo JSON supera 1 MB.");
+        }
+
+        var sizeFeature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (sizeFeature is { IsReadOnly: false })
+        {
+            sizeFeature.MaxRequestBodySize = MaxJsonBytes;
+        }
+
         context.Request.EnableBuffering();
         string body;
         using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true))
@@ -29,6 +47,11 @@ public sealed class NoSqlKeyValidationMiddleware
         }
 
         context.Request.Body.Position = 0;
+        if (Encoding.UTF8.GetByteCount(body) > MaxJsonBytes)
+        {
+            throw ApiException.PayloadTooLarge("El cuerpo JSON supera 1 MB.");
+        }
+
         if (string.IsNullOrWhiteSpace(body))
         {
             await _next(context);

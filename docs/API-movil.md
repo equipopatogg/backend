@@ -70,6 +70,20 @@
 | NOT-02 | `PATCH /api/v1/notifications/{id}/read` | Sí | — | `200` aviso con `read: true` |
 | NOT-03 | `POST /api/v1/notifications/read-all` | Sí | — | `200 { updated }` |
 | ACH-01 | `GET /api/v1/groups/{gid}/fame` | Sí | `limit`, `cursor` | `200` retos cumplidos con `executor`, `photos[]`, `links[]` |
+| AUTH-05 | `POST /api/v1/auth/verify-email` | No | `token` (del deep link `pactogg://auth/verify-email?token=...` o del código del correo) | `200 { email_verified: true }`; `400 INVALID_OR_EXPIRED_TOKEN` |
+| AUTH-05 | `POST /api/v1/auth/verify-email/resend` | Sí | — | `202`; `409 EMAIL_ALREADY_VERIFIED`; `429` (3 por hora) |
+| AUTH-06 | `POST /api/v1/auth/forgot-password` | No | `email` | **Siempre** `202` (no revela si la cuenta existe) |
+| AUTH-07 | `POST /api/v1/auth/reset-password` | No | `token` (deep link `pactogg://auth/reset-password?token=...`), `new_password` (12–128) | `200`; cierra todas las sesiones → manda a iniciar sesión; `400 INVALID_OR_EXPIRED_TOKEN` |
+| — | `POST /api/v1/users/me/password` | Sí | `current_password`, `new_password`, `device_id?` | `200` **sesión nueva** (guarda los tokens nuevos); `422 INVALID_CREDENTIALS`; `409 PASSWORD_NOT_SET` (cuenta de Google) |
+| USR-05 | `GET /api/v1/users/{id}` | Sí | — | `200` apodo, avatar, `stats` con `word_index` (sin correo); `403 NO_SHARED_GROUP`; `404` |
+| USR-07 | `POST /api/v1/users/me/consent` | Sí | `version` | `200 { version, accepted_at }`; `400` si no es la vigente |
+| CON-04 | `PATCH /api/v1/contracts/{id}` | Sí (retador) | `version` (obligatoria), `game?`, `condition?`, `reward?`, `deadline?`, `bond_required?` | `200` reto con `version + 1`; `403 NOT_CONTRACT_OWNER`; `409` si ya lo aceptaron o la versión cambió |
+| CON-05 | `DELETE /api/v1/contracts/{id}?version=n` | Sí (retador) | — | `204` (queda `cancelled`); `409` si ya lo aceptaron |
+| AUD-01 | `GET /api/v1/groups/{gid}/audit` | Sí (admin) | `entity?`, `entity_id?`, `limit`, `cursor` | `200` historial (acción, quién, cuándo, hash) |
+| NOT-04 | `DELETE /api/v1/notifications/{id}` | Sí | — | `204`; `404` si no es tuyo |
+| DEV-01 | `PUT /api/v1/devices/me` | Sí | `fcm_token`, `platform` (`android`), `app_version?` | `200` dispositivo |
+| DEV-02 | `DELETE /api/v1/devices/me?fcm_token=` | Sí | — | `204` (sin `fcm_token` borra todos) |
+| DEV-03 | `GET` / `PATCH /api/v1/devices/me/preferences` | Sí | `retos?`, `votos?`, `torneos?`, `compromisos?` (booleanos) | `200` preferencias |
 
 Dominios de enlace permitidos: youtube.com, youtu.be, twitch.tv, clips.twitch.tv, medal.tv, streamable.com (HTTPS obligatorio).
 
@@ -83,9 +97,12 @@ curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
 
 ## 6. Lo que todavía NO existe
 
-Editar/cancelar retos, Muro de la Vergüenza, push (FCM), crear torneos y partidas,  contrato por voz con IA, reportes, eliminar cuenta y verificación de correo. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
+Muro de la Vergüenza, crear torneos y partidas, contrato por voz con IA (falta la clave del modelo), reportes y bloqueos, eliminar cuenta e Índice de Palabra calculado (hoy vale 50 para todos). El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor; el correo igual, hasta configurar SES. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
 
 ## 7. Reglas que la app debe respetar
+
+- **Push (Firebase):** al iniciar sesión, y en cada `onNewToken` de FCM, llama `PUT /devices/me`. Al cerrar sesión, `DELETE /devices/me?fcm_token=...` **antes** de `/auth/logout`. El push trae `data.type` y, según el caso, `data.contract_id` / `data.group_id` / `data.commitment_id` para abrir la pantalla correcta. Usa el canal de notificaciones `pactogg_default`. El aviso también queda en el centro de notificaciones aunque el usuario apague ese tipo de push.
+- **Verificación de correo:** después del registro con correo muestra "Revisa tu correo". Registra los deep links `pactogg://auth/verify-email` y `pactogg://auth/reset-password` y, si no abren, deja pegar el código. Cuando el backend active la verificación obligatoria, crear o unirse a un grupo sin verificar da `403 EMAIL_NOT_VERIFIED`: ofrece "Reenviar correo".
 
 - Límite de peticiones: `429 RATE_LIMITED` (reintentar con espera).
 - Los puntos no son dinero: nada de símbolos de moneda en `reward`.
@@ -93,8 +110,13 @@ Editar/cancelar retos, Muro de la Vergüenza, push (FCM), crear torneos y partid
 - No puedes retarte a ti mismo: `422 INVALID_TARGET`.
 - Estados de un reto: `open` → `in_progress` (al aceptarlo; se descuenta la fianza) → `voting` (primera evidencia) → `fulfilled` / `cheating`; también `expired` y `cancelled`. Para un reto a todo el grupo, cualquiera menos el retador puede aceptarlo; si es a una persona, solo esa persona acepta o rechaza.
 - Muestra el saldo de `my_points` y deshabilita "Aceptar" si es menor que `bond_required` (el backend igual responde `402`).
-- **Jurado:** al subir la primera evidencia el reto pasa a `voting` y se eligen jurados al azar (3 por defecto, nunca el retador ni quien cumple). Con 3 jurados, 2 votos iguales cierran la votación. Si queda empate decide un admin.
-- **Al cerrar:** `fulfilled` devuelve la fianza a quien aceptó y crea un compromiso (el retador le debe la recompensa); `cheating` pasa la fianza al retador. Refresca `points/me` y `commitments` después de votar.
-- **Avisos:** consulta `GET /notifications?unread=true` al abrir la app (y cada cierto tiempo) para el globito; los tipos vienen en `type` (`contract_received`, `contract_accepted`, `vote_requested`, `vote_tie`, `contract_resolved`, `commitment_completion_requested`, `commitment_completed`). Push nativo todavía no.
+- **Idempotency-Key obligatoria** en `POST /contracts/{id}/accept`, `PUT /contracts/{id}/votes` y `POST /contracts/{id}/votes/resolve`: genera un UUID por acción del usuario y reúsalo si reintentas (por red caída). Sin cabecera → `400 IDEMPOTENCY_KEY_REQUIRED`; el reintento devuelve la misma respuesta con `Idempotent-Replayed: true`.
+- Para lanzar retos el grupo necesita **al menos 3 miembros** (`409 GROUP_TOO_SMALL`). Jurados configurables de 1 a 7; consenso de 0.50 a 1.0.
+- **Jurado:** al subir la primera evidencia el reto pasa a `voting` y se eligen jurados al azar (3 por defecto, nunca el retador ni quien cumple). Con la primera votación ya no se aceptan más evidencias. Consenso = 66 % de los votos emitidos con quórum de la mitad de los jurados (con 3 jurados, 2 iguales cierran). Dura 48 h; si no hay quórum se extiende 24 h una vez (`vote_extended`) y luego decide un admin que **no sea parte** del reto (`403 ADMIN_IS_PARTY`) en 48 h; si nadie decide, el reto queda `cancelled` y se devuelve la fianza. En empate decide un admin neutral o, si no hay, se agrega un jurado extra una vez. Votar fuera de plazo → `409 VOTING_CLOSED`.
+- **Al cerrar:** `fulfilled` devuelve la fianza **más un premio igual a la fianza** a quien aceptó y crea un compromiso (el retador le debe la recompensa); `cheating` pasa la fianza al retador. Si vence la fecha límite sin evidencia, el reto pasa a `expired` y la fianza va al retador. Refresca `points/me` y `commitments` después de votar.
+- **Resultado (`/result`):** los comentarios se muestran **sin** decir qué jurado votó.
+- **Avisos:** consulta `GET /notifications?unread=true` al abrir la app (y cada cierto tiempo) para el globito; los tipos vienen en `type` (`contract_received`, `contract_accepted`, `vote_requested`, `vote_expiring`, `vote_extended`, `vote_tie`, `contract_resolved`, `contract_expired`, `contract_cancelled`, `commitment_completion_requested`, `commitment_completed`). Se guardan 30 días. Push nativo todavía no.
+- Un refresh token que se reutiliza (ya rotado) cierra **todas** las sesiones: manda al usuario a iniciar sesión.
+- Cuerpos JSON de más de 1 MB → `413 PAYLOAD_TOO_LARGE`. Las respuestas vienen comprimidas con gzip si mandas `Accept-Encoding: gzip` (OkHttp lo hace solo).
 - Las listas pueden tardar hasta 30–60 s en reflejar cambios de **otras** personas (caché); tus propias acciones se ven al instante.
 - Moderación de fotos: se aceptan capturas de juego con armas, sangre o explosiones; se rechazan desnudos, símbolos de odio, contenido perturbador y gore real (`422 CONTENT_REJECTED` con `details.labels`). Muestra un aviso claro y deja elegir otra foto.

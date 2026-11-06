@@ -40,3 +40,12 @@ ID 88 · Votación legítimo o trampa; ID 99/100 · entrega o pérdida de fianza
 | Votar dos veces → 409; no jurado → 403 | IntegrationTest/JuryFlowTests.cs |
 
 401 sin token: `SecurityTest/AuthorizationTests.cs`.
+
+## Cambio 0.7.0 (alineación con CLARIFICACION #79–83 y DESC_BACK 7.6)
+
+- RF-A: consenso = votos del lado × 100 ≥ consenso × votos **emitidos**, con quórum de la mitad de los jurados asignados. Cierre anticipado solo si ya no puede cambiar.
+- RF-B: a las 48 h sin quórum se extiende 24 h una sola vez (aviso `vote_extended`); 6 h antes del cierre se avisa `vote_expiring`.
+- RF-C: empate → admin que no sea parte; si no hay, un jurado adicional una sola vez.
+- RF-D: fuera de plazo o en fase del administrador → `409 VOTING_CLOSED`. Con el primer voto ya no se aceptan evidencias.
+- RF-E: cabecera `Idempotency-Key` obligatoria.
+- Pruebas: `UnitTest/VotingRulesTests.cs`, `JuryFlowTests.TiedVote_WithoutNeutralAdmin_AssignsOneExtraJuror`, `JuryFlowTests.VotingDeadlines_ExtendOnce_ThenAdminPhase_ThenCancelWithRefund`.
