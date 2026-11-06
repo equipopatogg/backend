@@ -21,6 +21,10 @@ public static class VotingRules
     public static int ConsensusPercent(double consensus) =>
         Math.Clamp((int)Math.Round(consensus * 100, MidpointRounding.AwayFromZero), 50, 100);
 
+    /// <param name="legit">Votos "legítimo" emitidos.</param>
+    /// <param name="cheat">Votos "trampa" emitidos.</param>
+    /// <param name="jurorsAssigned">Jurados asignados al reto.</param>
+    /// <param name="consensus">Consenso del grupo (0.50 a 1.0).</param>
     /// <param name="final">true cuando ya votaron todos o venció el plazo: se decide con los votos emitidos.</param>
     public static VotingDecision Decide(int legit, int cheat, int jurorsAssigned, double consensus, bool final)
     {

@@ -1243,11 +1243,13 @@ public sealed class FakeEmailSender : Pactogg.Api.Infrastructure.Email.IEmailSen
         return Task.FromResult(true);
     }
 
-    /// <summary>Último token enviado a ese correo (la línea "Código: ..." del texto plano).</summary>
+    /// <summary>Último token enviado a ese correo: se toma del enlace (?token=...) del texto plano.</summary>
     public string? LastTokenFor(string email, string subjectContains) =>
         Sent.Reverse()
             .Where(x => string.Equals(x.To, email, StringComparison.OrdinalIgnoreCase) && x.Subject.Contains(subjectContains, StringComparison.Ordinal))
-            .Select(x => x.TextBody.Split('\n').FirstOrDefault(line => line.StartsWith("Código: ", StringComparison.Ordinal))?["Código: ".Length..].Trim())
+            .Select(x => System.Text.RegularExpressions.Regex.Match(x.TextBody, "[?&]token=([A-Za-z0-9_%-]+)"))
+            .Where(m => m.Success)
+            .Select(m => Uri.UnescapeDataString(m.Groups[1].Value))
             .FirstOrDefault();
 }
 
