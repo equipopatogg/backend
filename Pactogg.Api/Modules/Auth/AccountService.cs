@@ -203,18 +203,15 @@ public sealed class AccountService
     {
         var safeIntro = WebUtility.HtmlEncode(intro);
         var safeLink = WebUtility.HtmlEncode(link);
-        var safeToken = WebUtility.HtmlEncode(token);
         var html = $"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#1b1b1f">
               <h2 style="color:#6c2bd9">PactoGG</h2>
               <p>{safeIntro}</p>
               <p><a href="{safeLink}" style="display:inline-block;background:#6c2bd9;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">{WebUtility.HtmlEncode(button)}</a></p>
-              <p style="font-size:13px;color:#555">Si el botón no abre la app, copia este código en PactoGG:</p>
-              <p style="font-family:monospace;font-size:13px;word-break:break-all;background:#f3f0fa;padding:8px;border-radius:6px">{safeToken}</p>
               <p style="font-size:12px;color:#777">{WebUtility.HtmlEncode(footer)}</p>
             </div>
             """;
-        var text = $"{intro}\n\n{button}: {link}\n\nCódigo: {token}\n\n{footer}";
+        var text = $"{intro}\n\n{button}: {link}\n\n{footer}";
         return new EmailMessage(to, subject, text, html);
     }
 }
