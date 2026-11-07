@@ -191,6 +191,7 @@
 | F2-D56 | Administración de grupos: el creador no puede salir ni ser expulsado (elimina el grupo); quien sale o es expulsado vuelve con su saldo; salir/expulsar cancela sus retos activos con devolución | CLARIFICACION #24–#28, #37; decisión del PO del 2026-11-06 (ADM-D1, ADM-D2) | Aprobada |
 | F2-D57 | Borrar cuenta: confirmación con contraseña y ELIMINAR; el grupo del creador pasa al admin o miembro más antiguo, o se elimina si queda vacío | CLARIFICACION #12, #15, #16; decisión del PO (USR04-D1, USR04-D2) | Aprobada |
 | F2-D58 | Reportes: los de cuentas quedan `escalated` para el administrador de la plataforma; el bloqueo impide retos directos | CLARIFICACION #19, #20; decisión del PO (REP-D1, REP-D2) | Aprobada |
+| F2-D59 | Correo SMTP (Gmail con contraseña de aplicación), Firebase y verificación obligatoria se leen de parámetros SSM opcionales que crea `scripts/configure-email.sh`; Caddy revisa `/health/ready`. Cambiar `user_data` recrea las 2 instancias (las Elastic IP no cambian) | La cuenta del equipo quedó bloqueada por Google; se usa la cuenta personal del PO. Los secretos nunca entran al repositorio | Aprobada |
 | F2-D45 | La numeración de versiones ya publicada (0.4–0.6) no se reescribe; la matriz 0.1–0.4 del documento se cubre por contenido, no por número | Decisión del PO del 2026-11-05 | Aprobada |
 
 ### 2.1 Registro de aprobación de la Fase 2
