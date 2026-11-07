@@ -40,6 +40,7 @@ public sealed class GroupResponse
     public string MyRole { get; init; } = "admin";
     public int MyPoints { get; init; }
     public DateTime CreatedAt { get; init; }
+    public DateTime UpdatedAt { get; init; }
 }
 
 public sealed class JoinGroupRequest
@@ -56,4 +57,27 @@ public sealed class GroupMemberResponse
     public string Role { get; init; } = "member";
     public int PointsBalance { get; init; }
     public DateTime JoinedAt { get; init; }
+}
+
+/// <summary>GRP-04: cambios parciales del grupo.</summary>
+public sealed class UpdateGroupRequest
+{
+    [StringLength(40, MinimumLength = 2)]
+    public string? Name { get; set; }
+
+    public GroupSettingsRequest? Settings { get; set; }
+}
+
+/// <summary>GRP-07.</summary>
+public sealed class SetInviteActiveRequest
+{
+    [Required]
+    public bool? Active { get; set; }
+}
+
+/// <summary>MEM-03.</summary>
+public sealed class SetRoleRequest
+{
+    [Required, RegularExpression("^(admin|member)$", ErrorMessage = "role debe ser admin o member.")]
+    public string Role { get; set; } = "member";
 }

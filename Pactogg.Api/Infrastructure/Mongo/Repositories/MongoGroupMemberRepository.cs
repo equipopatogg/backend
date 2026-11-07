@@ -89,4 +89,35 @@ public sealed class MongoGroupMemberRepository : IGroupMemberRepository
             x => x.UserId == userId,
             Builders<GroupMember>.Update.Set(x => x.NickLower, nickLower).Set(x => x.UpdatedAt, DateTime.UtcNow),
             cancellationToken: cancellationToken);
+
+    public async Task<GroupMember?> GetAnyAsync(ObjectId groupId, ObjectId userId, CancellationToken cancellationToken) =>
+        await _context.GroupMembers.Find(x => x.GroupId == groupId && x.UserId == userId).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<GroupMember?> SetStatusAsync(ObjectId groupId, ObjectId userId, string status, DateTime now, CancellationToken cancellationToken)
+    {
+        var update = Builders<GroupMember>.Update.Set(x => x.Status, status).Set(x => x.UpdatedAt, now);
+        if (status == "active")
+        {
+            update = update.Set(x => x.JoinedAt, now).Set(x => x.Role, "member");
+        }
+
+        return await _context.GroupMembers.FindOneAndUpdateAsync(
+            Builders<GroupMember>.Filter.Where(x => x.GroupId == groupId && x.UserId == userId),
+            update,
+            new FindOneAndUpdateOptions<GroupMember> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+    }
+
+    public async Task<GroupMember?> SetRoleAsync(ObjectId groupId, ObjectId userId, string role, DateTime now, CancellationToken cancellationToken) =>
+        await _context.GroupMembers.FindOneAndUpdateAsync(
+            Builders<GroupMember>.Filter.Where(x => x.GroupId == groupId && x.UserId == userId && x.Status == "active"),
+            Builders<GroupMember>.Update.Set(x => x.Role, role).Set(x => x.UpdatedAt, now),
+            new FindOneAndUpdateOptions<GroupMember> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+
+    public Task DeactivateAllAsync(ObjectId groupId, DateTime now, CancellationToken cancellationToken) =>
+        _context.GroupMembers.UpdateManyAsync(
+            x => x.GroupId == groupId && x.Status == "active",
+            Builders<GroupMember>.Update.Set(x => x.Status, "left").Set(x => x.UpdatedAt, now),
+            cancellationToken: cancellationToken);
 }

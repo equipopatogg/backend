@@ -86,7 +86,7 @@ Validaciones: `email` válido y máximo 254; `password` 12–128; `nickname` reg
 - **USR01-D1:** apodo obligatorio (D-15).
 - **USR01-D2:** contraseña 12–128 sin composición (D-16).
 - **USR01-D3:** consentimiento con versión vigente (D-21).
-- **USR01-D4:** rango implementado de apodo 3–24; el texto histórico 3–30 queda pendiente de reconciliación (Q-019).
+- **USR01-D4:** apodo 3–24 (Q-019 resuelta, F2-D50).
 
 ## 6. Criterios de aceptación
 
@@ -104,7 +104,7 @@ Flujo de registro en IntegrationTest, hasher en UnitTest, campo desconocido y No
 
 ## 8. Riesgos y deuda
 
-No hay verificación de correo ni recuperación de contraseña. La prueba de duplicados no está dedicada. La conexión Atlas se verificó localmente; falta E2E del registro. El apodo máximo difiere del texto histórico (Q-019).
+La verificación de correo y la recuperación de contraseña se agregaron en 0.8.0 (AUTH-05, AUTH-06/07). La prueba de duplicados no está dedicada. El E2E del registro contra Atlas desde AWS se verificó el 2026-11-04. Límite de apodo 3–24 confirmado (Q-019, F2-D50).
 
 ## Aprobación
 

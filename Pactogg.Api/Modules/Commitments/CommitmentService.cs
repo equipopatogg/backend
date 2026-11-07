@@ -64,6 +64,21 @@ public sealed class CommitmentService
         return (await MapAsync(items, cancellationToken), new { next_cursor = next, has_more = hasMore });
     }
 
+    /// <summary>COM-02: detalle para cualquier miembro del grupo (LoadAsync valida pertenencia).</summary>
+    public async Task<CommitmentResponse> GetAsync(ObjectId userId, string id, CancellationToken cancellationToken) =>
+        (await MapAsync([await LoadAsync(userId, id, cancellationToken)], cancellationToken))[0];
+
+    /// <summary>COM-05: contador de compromisos abiertos del usuario en el grupo.</summary>
+    public async Task<CommitmentSummaryResponse> SummaryAsync(ObjectId userId, string gid, CancellationToken cancellationToken)
+    {
+        var (group, _) = await _access.RequireMemberAsync(userId, gid, cancellationToken);
+        return new CommitmentSummaryResponse
+        {
+            Debo = await _commitments.CountOpenAsync(group.Id, userId, true, cancellationToken),
+            MeDeben = await _commitments.CountOpenAsync(group.Id, userId, false, cancellationToken)
+        };
+    }
+
     /// <summary>COM-03: el acreedor confirma que ya le cumplieron.</summary>
     public async Task<CommitmentResponse> CompleteAsync(ObjectId userId, string id, CancellationToken cancellationToken)
     {

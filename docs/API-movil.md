@@ -120,3 +120,23 @@ Muro de la Vergüenza, crear torneos y partidas, contrato por voz con IA (falta 
 - Cuerpos JSON de más de 1 MB → `413 PAYLOAD_TOO_LARGE`. Las respuestas vienen comprimidas con gzip si mandas `Accept-Encoding: gzip` (OkHttp lo hace solo).
 - Las listas pueden tardar hasta 30–60 s en reflejar cambios de **otras** personas (caché); tus propias acciones se ven al instante.
 - Moderación de fotos: se aceptan capturas de juego con armas, sangre o explosiones; se rechazan desnudos, símbolos de odio, contenido perturbador y gore real (`422 CONTENT_REJECTED` con `details.labels`). Muestra un aviso claro y deja elegir otra foto.
+
+## Cambios 0.8.1 (2026-11-06)
+
+- `POST /groups`: el nombre (2–40) pasa por moderación. Si se rechaza → `422 CONTENT_REJECTED`; muestra "Elige otro nombre". Si responde `503`, ofrece reintentar.
+- `POST /groups/{gid}/contracts` y `PATCH /contracts/{id}`: ahora también se modera el **juego**; mismo `422 CONTENT_REJECTED`.
+- `PUT /devices/me`: máximo 5 celulares por cuenta; al registrar el sexto se quita el que lleva más tiempo sin usarse. No hay error nuevo.
+- `POST /auth/logout` con `all=true` ya quita todos los dispositivos de push en el servidor; con logout normal sigan llamando `DELETE /devices/me?fcm_token=` antes de salir.
+- `GET /health/ready`: 200 si la API y la base responden, 503 si la base no. `/health` sigue igual.
+- Próximo (spec 005): `POST /groups/{gid}/contracts/parse` con `{ "phrase" }` (máx. 300) devuelve un borrador; errores `422 AI_PARSE_FAILED`, `429`, `503 AI_UNAVAILABLE` → ofrecer escribir a mano. Al lanzar, `source: "voice"` y `original_phrase`.
+
+## Cambios 0.9.0 (2026-11-06)
+
+- **Administración del grupo** (solo `admin`): `PATCH /groups/{id}` (nombre y ajustes), `POST /groups/{id}/invite-code/regenerate`, `PATCH /groups/{id}/invite-code` `{ active }`, `PATCH /groups/{id}/members/{uid}` `{ role }`, `DELETE /groups/{id}/members/{uid}` (expulsar). `DELETE /groups/{id}` solo el creador. Errores: `403 NOT_GROUP_ADMIN / NOT_GROUP_OWNER`, `409 CANNOT_MODIFY_OWNER`.
+- **Miembro:** `GET /groups/{id}/members/me` (rol y saldo) y `DELETE /groups/{id}/members/me` (salir; el creador recibe `409 OWNER_CANNOT_LEAVE`). Al salir o ser expulsado se cancelan sus retos activos y se devuelven las fianzas; si vuelve con el código, recupera su saldo.
+- **Borrar cuenta:** `DELETE /users/me` con cuerpo `{ "password": "…", "confirm": "ELIMINAR" }` → `204`. Después borra los tokens del celular y manda a la pantalla de inicio.
+- **Reportes:** `POST /reports` `{ group_id, target_type: evidence|comment|user, target_id, reason }` → `201` (`409 ALREADY_REPORTED` si repite; 10 por hora). Admin: `GET /groups/{gid}/reports`, `POST /reports/{id}/resolve` `{ action: dismiss|remove_content }`, `DELETE /groups/{gid}/content/{evidence|comment}/{id}`.
+- **Bloqueos:** `POST` / `DELETE /users/{id}/block` → `204`. Si te bloquearon, retar directamente a esa persona da `403 BLOCKED_BY_USER`.
+- **Detalles:** `GET /points/movements/{id}`, `GET /commitments/{id}`, `GET /groups/{gid}/commitments/summary` → `{ debo, me_deben }`, `GET /groups/{gid}/ranking` → `{ king, items }` (`king` no viene si hay empate).
+- Avisos nuevos: `group_role_changed`, `group_member_removed`, `group_owner_transferred`.
+

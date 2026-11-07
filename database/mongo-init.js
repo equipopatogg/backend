@@ -83,14 +83,18 @@ const collections = {
   },
   commitments: {
     required: ["group_id", "contract_id", "debtor_id", "creditor_id", "description", "status"],
-    properties: { status: { enum: ["pending", "completion_requested", "completed"] }, description: str(3, 80) }
+    properties: { status: { enum: ["pending", "completion_requested", "completed", "cancelled"] }, description: str(3, 80) }
   },
   notifications: { required: ["user_id", "type", "title", "created_at"], properties: { user_id: oid, title: str(1, 80) } },
   devices: { required: ["user_id", "fcm_token", "platform"], properties: { user_id: oid, fcm_token: str(20, 4096) } },
   tournaments: { required: ["group_id", "game", "status"], properties: { status: { enum: ["open", "in_progress", "finished", "cancelled"] } } },
   matches: { required: ["tournament_id", "round", "position", "status"], properties: { tournament_id: oid } },
   audit_events: { required: ["action", "entity_type", "created_at"], properties: { action: { bsonType: "string" } } },
-  reports: { required: [], properties: {} }
+  reports: {
+    required: ["group_id", "reporter_id", "target_type", "target_id", "reason", "status", "created_at"],
+    properties: { target_type: { enum: ["evidence", "comment", "user"] }, status: { enum: ["open", "dismissed", "content_removed", "escalated"] } }
+  },
+  blocks: { required: ["blocker_id", "blocked_id", "created_at"], properties: { blocker_id: oid, blocked_id: oid } }
 };
 
 const existing = new Set(target.getCollectionNames());
@@ -149,7 +153,15 @@ const indexes = {
     [{ dedupe_key: 1 }, { name: "ux_notifications_dedupe", unique: true, partialFilterExpression: { dedupe_key: { $type: "string" } } }]
   ],
   tournaments: [[{ group_id: 1, status: 1, scheduled_at: 1 }, { name: "ix_tournaments_group_status_scheduled" }]],
-  audit_events: [[{ group_id: 1, created_at: -1 }, { name: "ix_audit_group_created" }], [{ group_id: 1, _id: -1 }, { name: "ix_audit_group_id" }]]
+  audit_events: [[{ group_id: 1, created_at: -1 }, { name: "ix_audit_group_created" }], [{ group_id: 1, _id: -1 }, { name: "ix_audit_group_id" }]],
+  reports: [
+    [{ reporter_id: 1, target_type: 1, target_id: 1 }, { name: "ux_reports_reporter_target", unique: true }],
+    [{ group_id: 1, status: 1, _id: -1 }, { name: "ix_reports_group_status" }]
+  ],
+  blocks: [
+    [{ blocker_id: 1, blocked_id: 1 }, { name: "ux_blocks_pair", unique: true }],
+    [{ blocked_id: 1 }, { name: "ix_blocks_blocked" }]
+  ]
 };
 
 let total = 0;

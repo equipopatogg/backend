@@ -87,4 +87,7 @@ public sealed class MongoNotificationRepository : INotificationRepository
             cancellationToken: cancellationToken);
         return result.ModifiedCount;
     }
+
+    public Task DeleteAllForUserAsync(ObjectId userId, CancellationToken cancellationToken) =>
+        _context.Notifications.DeleteManyAsync(x => x.UserId == userId, cancellationToken);
 }

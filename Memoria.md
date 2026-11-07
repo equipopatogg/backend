@@ -182,6 +182,15 @@
 | F2-D47 | Tokens de verificación y recuperación en Redis (solo SHA-256, un solo uso, 24 h / 1 h) | CLARIFICACION seguridad: token de un solo uso, hasheado y con caducidad | Aprobada |
 | F2-D48 | Push con FCM HTTP v1 sin SDK (JWT RS256 de la cuenta de servicio), cola en memoria y preferencias por categoría | Evita una dependencia nueva; el aviso queda en el centro de notificaciones aunque el push esté apagado | Aprobada |
 | F2-D49 | Solo un refresh **rotado** que reaparece revoca todas las sesiones; los revocados por logout o cambio de contraseña solo dan 401 | Evita cerrar la sesión nueva tras cambiar la contraseña (CLARIFICACION #10) | Aprobada |
+| F2-D50 | Q-019: apodo 3–24 y nombre de grupo 2–40 (se corrigen los documentos, no el código) | Decisión del PO al validar 001–003 | Aprobada |
+| F2-D51 | Q-020: con correo inexistente el login verifica un hash Argon2id ficticio | Evita enumerar cuentas por tiempo de respuesta | Aprobada |
+| F2-D52 | Q-021: el nombre del grupo pasa por moderación de texto, falla cerrada | Decisión del PO al validar 001–003 | Aprobada |
+| F2-D53 | El bloqueo tras 5 fallos de login usa un contador local si Redis no responde | Defecto encontrado al validar 002: con Redis caído el bloqueo se desactivaba (constitución §8) | Aprobada |
+| F2-D54 | `/health` queda como vida del proceso (Caddy) y `/health/ready` agrega MongoDB | CLARIFICACION #136 sin reemplazar instancias ahora; Caddy pasa a `/health/ready` con el cambio de SMTP/Firebase | Aprobada |
+| F2-D55 | Spec 004: también se modera el juego; spec 006: tope de 5 dispositivos quitando el menos usado y limpieza al cerrar sesión en todos lados | Huecos encontrados al escribir 004 y 006 (constitución §3.9 y §4) | Aprobada |
+| F2-D56 | Administración de grupos: el creador no puede salir ni ser expulsado (elimina el grupo); quien sale o es expulsado vuelve con su saldo; salir/expulsar cancela sus retos activos con devolución | CLARIFICACION #24–#28, #37; decisión del PO del 2026-11-06 (ADM-D1, ADM-D2) | Aprobada |
+| F2-D57 | Borrar cuenta: confirmación con contraseña y ELIMINAR; el grupo del creador pasa al admin o miembro más antiguo, o se elimina si queda vacío | CLARIFICACION #12, #15, #16; decisión del PO (USR04-D1, USR04-D2) | Aprobada |
+| F2-D58 | Reportes: los de cuentas quedan `escalated` para el administrador de la plataforma; el bloqueo impide retos directos | CLARIFICACION #19, #20; decisión del PO (REP-D1, REP-D2) | Aprobada |
 | F2-D45 | La numeración de versiones ya publicada (0.4–0.6) no se reescribe; la matriz 0.1–0.4 del documento se cubre por contenido, no por número | Decisión del PO del 2026-11-05 | Aprobada |
 
 ### 2.1 Registro de aprobación de la Fase 2
@@ -358,6 +367,8 @@ cd deploy/terraform && terraform fmt -check -recursive && terraform validate
 | 2026-10-30 | 0.1.1 | Verificación de restore, build, API y auditoría de dependencias; paquetes endurecidos sin CVEs altas | Agente OpenCode |
 | 2026-11-02 | 0.2.0 | Fase 2: siete endpoints, auth/grupos/contratos/evidencias/torneos, moderación, S3, OpenAPI, Docker/Terraform y 42 pruebas en verde | Agente OpenCode |
 | 2026-11-02 | 0.3.0 | Terraform AWS completo en `deploy/terraform`, pipeline `backend-ci-cd.yml`, pruebas funcionales en los 7 proyectos y moderación antes de S3; 49 pruebas en verde y 1 omitida | Agente OpenCode |
+| 2026-11-06 | 0.9.0 | 19 endpoints nuevos con spec antes del código: GRP-04..07, MEM-03..06, USR-04, PTS-03, COM-02, COM-05, ACH-03, REP-01..06; plan, tareas y checklist en los 33 expedientes que solo tenían spec; 66 de 87 endpoints del CRUD (sin EVI-01 ni temporadas); 129 pruebas de integración; F2-D56 a F2-D58 | Claude / PO David |
+| 2026-11-06 | 0.8.1 | Validación SDD 001–003 (fila 58) y specs 004 Contratos, 005 Contrato por voz y 006 Push/sin conexión con plan y tareas (filas 63–66); Q-019..Q-021 resueltas, Q-022 registrada; correcciones: bloqueo de login sin Redis, `/health/ready`, juego moderado, nombre de grupo moderado, 5 dispositivos; 114 pruebas de integración; F2-D50 a F2-D55 | Claude / PO David |
 | 2026-11-05 | 0.8.0 | Adelanto del sprint 3: verificación de correo, recuperación y cambio de contraseña, perfil público, aviso de privacidad, editar/cancelar retos, auditoría del grupo, borrar avisos, dispositivos y push con FCM; 96 pruebas; F2-D46 a F2-D49 | Claude / PO David |
 | 2026-11-05 | 0.7.0 | Alineación con los documentos: reglas de votación y plazos, expiración, premio por reto cumplido, mínimo 3 miembros, idempotencia, reutilización de refresh, gzip, JSON 1 MB, avisos 30 d sin duplicados, pipeline (Gitleaks, Checkov, SBOM, SonarCloud, ZAP, Dependabot, SHA) y Budgets/CloudTrail; F2-D40 a F2-D45 | Claude / PO David |
 | 2026-11-04 | 0.6.1 | Cierre del sprint 2 según el plan nuevo: login con Google, Semgrep + Dockle + compuerta, `infra.yml` (crear/eliminar), bootstrap de estado remoto, script de la BD, SDD 001–003 y plan de pruebas; F2-D35 a F2-D39 | Claude / PO David |

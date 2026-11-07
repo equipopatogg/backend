@@ -137,4 +137,21 @@ public sealed class MongoUserRepository : IUserRepository
             throw ApiException.Conflict(ErrorCodes.NicknameAlreadyExists, "El apodo ya está en uso.");
         }
     }
+
+    public Task AnonymizeAsync(ObjectId id, DateTime now, CancellationToken cancellationToken) =>
+        _context.Users.UpdateOneAsync(
+            x => x.Id == id,
+            Builders<User>.Update
+                .Set(x => x.Email, $"eliminado-{id}@pactogg.invalid")
+                .Set(x => x.PasswordHash, string.Empty)
+                .Set(x => x.GoogleSub, null)
+                .Set(x => x.Nickname, "Usuario eliminado")
+                .Set(x => x.NicknameLower, $"eliminado:{id}")
+                .Set(x => x.AvatarId, "default")
+                .Set(x => x.EmailVerified, false)
+                .Set(x => x.Consent, new ConsentRecord { Version = string.Empty, AcceptedAt = DateTime.MinValue })
+                .Set(x => x.Status, "deleted")
+                .Set(x => x.DeletedAt, now)
+                .Set(x => x.UpdatedAt, now),
+            cancellationToken: cancellationToken);
 }

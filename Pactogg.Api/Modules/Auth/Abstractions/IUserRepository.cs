@@ -21,4 +21,7 @@ public interface IUserRepository
     Task<User?> UpdateNotificationPreferencesAsync(ObjectId id, NotificationPreferences preferences, DateTime at, CancellationToken cancellationToken);
 
     Task<User?> UpdateProfileAsync(ObjectId id, string? nickname, string? avatarId, DateTime at, CancellationToken cancellationToken);
+
+    /// <summary>USR-04: borra datos personales y deja el apodo "Usuario eliminado" (CLARIFICACION #15, #16).</summary>
+    Task AnonymizeAsync(ObjectId id, DateTime now, CancellationToken cancellationToken);
 }

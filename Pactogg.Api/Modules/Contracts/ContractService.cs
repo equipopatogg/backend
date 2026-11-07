@@ -17,6 +17,7 @@ public sealed class ContractService
     private readonly IGroupRepository _groups;
     private readonly IGroupMemberRepository _members;
     private readonly IModerationService _moderation;
+    private readonly Pactogg.Api.Modules.Reports.IBlockRepository _blocks;
     private readonly IAuditService _audit;
     private readonly ICacheService _cache;
     private readonly NotificationService _notifications;
@@ -28,7 +29,8 @@ public sealed class ContractService
         IModerationService moderation,
         IAuditService audit,
         ICacheService cache,
-        NotificationService notifications)
+        NotificationService notifications,
+        Pactogg.Api.Modules.Reports.IBlockRepository blocks)
     {
         _cache = cache;
         _notifications = notifications;
@@ -36,6 +38,7 @@ public sealed class ContractService
         _groups = groups;
         _members = members;
         _moderation = moderation;
+        _blocks = blocks;
         _audit = audit;
     }
 
@@ -93,6 +96,12 @@ public sealed class ContractService
                 throw ApiException.Unprocessable(ErrorCodes.InvalidTarget, "No puedes retarte a ti mismo.");
             }
 
+            // REP-D2: quien te bloqueó no recibe retos directos tuyos.
+            if (await _blocks.IsBlockedAsync(parsedTarget, userId, cancellationToken))
+            {
+                throw ApiException.Forbidden(ErrorCodes.BlockedByUser, "Esta persona no acepta retos tuyos.");
+            }
+
             targetId = parsedTarget;
         }
         else if (targetType != "group")
@@ -101,11 +110,13 @@ public sealed class ContractService
         }
 
         var reward = ContractRules.NormalizeReward(request.Reward);
+        // 004-R4: juego, condición y recompensa son texto libre y pasan por moderación (constitución §3.9).
+        var gameModeration = await _moderation.ModerateTextAsync(request.Game.Trim(), cancellationToken);
         var conditionModeration = await _moderation.ModerateTextAsync(request.Condition, cancellationToken);
         var rewardModeration = await _moderation.ModerateTextAsync(reward, cancellationToken);
-        if (!conditionModeration.Approved || !rewardModeration.Approved)
+        if (!gameModeration.Approved || !conditionModeration.Approved || !rewardModeration.Approved)
         {
-            var labels = conditionModeration.Labels.Concat(rewardModeration.Labels).Distinct().ToArray();
+            var labels = gameModeration.Labels.Concat(conditionModeration.Labels).Concat(rewardModeration.Labels).Distinct().ToArray();
             throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El contrato fue rechazado por moderación.", new { labels });
         }
 
@@ -309,13 +320,14 @@ public sealed class ContractService
             throw ApiException.Unprocessable(ErrorCodes.InvalidBond, "La fianza no está permitida por el grupo.");
         }
 
-        if (request.Condition is not null || request.Reward is not null)
+        if (request.Game is not null || request.Condition is not null || request.Reward is not null)
         {
+            var gameModeration = await _moderation.ModerateTextAsync(game, cancellationToken);
             var conditionModeration = await _moderation.ModerateTextAsync(condition, cancellationToken);
             var rewardModeration = await _moderation.ModerateTextAsync(reward, cancellationToken);
-            if (!conditionModeration.Approved || !rewardModeration.Approved)
+            if (!gameModeration.Approved || !conditionModeration.Approved || !rewardModeration.Approved)
             {
-                var labels = conditionModeration.Labels.Concat(rewardModeration.Labels).Distinct().ToArray();
+                var labels = gameModeration.Labels.Concat(conditionModeration.Labels).Concat(rewardModeration.Labels).Distinct().ToArray();
                 throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El contrato fue rechazado por moderación.", new { labels });
             }
         }

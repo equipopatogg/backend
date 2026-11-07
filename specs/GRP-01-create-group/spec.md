@@ -81,8 +81,8 @@ Autorización obligatoria. Código de invitación sin caracteres ambiguos. Sin P
 
 - **GRP01-D1:** máximo 5 grupos (D-22/Config).
 - **GRP01-D2:** creador admin con 100 puntos.
-- **GRP01-D3:** nombre 2–40 implementado; el texto histórico 3–30 queda pendiente (Q-019).
-- **GRP01-D4:** la moderación del nombre no está implementada; deuda Q-021.
+- **GRP01-D3:** nombre 2–40 (Q-019 resuelta, F2-D50). Prueba `SddDecisionTests.Q019_GroupNameLengthIs2To40`.
+- **GRP01-D4:** el nombre pasa por moderación de texto antes de guardarse; rechazo `422 CONTENT_REJECTED`, moderador caído `503` (Q-021 resuelta, F2-D52). Prueba `SddDecisionTests.Q021_GroupNameRejectedByModeration_Returns422AndIsNotStored`.
 
 ## 6. Criterios de aceptación
 

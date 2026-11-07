@@ -13,6 +13,8 @@ Grupo + membresía como colecciones separadas (saldo por miembro); operaciones d
 | `Pactogg.Api/Modules/Groups/*` | Crear, listar, detalle, unirse, miembros |
 | `Pactogg.Api/Modules/Points/*` | Saldo, movimientos y ranking |
 | `Pactogg.Api/Infrastructure/Mongo/Repositories/MongoGroup*.cs` | Persistencia e incrementos atómicos |
+| `Pactogg.Api/Modules/Groups/GroupService.cs` | Moderación del nombre (F2-D52) |
+| `IntegrationTest/SddDecisionTests.cs` | Longitud del nombre, sexto grupo, jurados inválidos, nombre moderado |
 
 ## Pruebas
 
@@ -20,4 +22,4 @@ Integración (crear, unirse, lleno, ajeno), seguridad (401).
 
 ## Orden
 
-1. Crear y código. 2. Unirse. 3. Listados. 4. Puntos. 5. Documentación.
+1. Crear y código. 2. Unirse. 3. Listados. 4. Puntos. 5. Moderación del nombre. 6. Documentación.

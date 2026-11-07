@@ -29,4 +29,13 @@ public sealed class MongoVoteRepository : IVoteRepository
 
     public async Task<IReadOnlyList<Vote>> ListByContractAsync(ObjectId contractId, CancellationToken cancellationToken) =>
         await _context.Votes.Find(x => x.ContractId == contractId).SortBy(x => x.CreatedAt).ToListAsync(cancellationToken);
+
+    public async Task<Vote?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        await _context.Votes.Find(x => x.Id == id).FirstOrDefaultAsync(cancellationToken);
+
+    public Task ClearCommentAsync(ObjectId id, CancellationToken cancellationToken) =>
+        _context.Votes.UpdateOneAsync(x => x.Id == id, Builders<Vote>.Update.Set(x => x.Comment, null), cancellationToken: cancellationToken);
+
+    public Task ClearCommentsByJurorAsync(ObjectId jurorId, CancellationToken cancellationToken) =>
+        _context.Votes.UpdateManyAsync(x => x.JurorId == jurorId && x.Comment != null, Builders<Vote>.Update.Set(x => x.Comment, null), cancellationToken: cancellationToken);
 }

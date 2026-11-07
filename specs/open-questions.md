@@ -26,9 +26,10 @@
 | Q-016 | Opciones de fianza por grupo | Bajo | Resuelta D-22 |
 | Q-017 | Transición a `voting` por evidencia | Alto | Resuelta F2-D20 |
 | Q-018 | Objetivo del contrato y auto-reto | Medio | Resuelta F2-D21 |
-| Q-019 | Longitudes de apodo y nombre de grupo | Medio | Abierta |
-| Q-020 | Timing de login para correo inexistente | Medio | Abierta |
-| Q-021 | Moderación del nombre de grupo | Medio | Abierta |
+| Q-019 | Longitudes de apodo y nombre de grupo | Medio | Resuelta F2-D50 |
+| Q-020 | Timing de login para correo inexistente | Medio | Resuelta F2-D51 |
+| Q-021 | Moderación del nombre de grupo | Medio | Resuelta F2-D52 |
+| Q-022 | Cancelación de un reto aceptado por el administrador | Medio | Abierta |
 
 ---
 
@@ -365,7 +366,7 @@ Si el equipo prefiere una sola llamada, `POST /contracts/{id}/evidence` acepta `
 
 **Propuesta:** elegir una única fuente y alinear DTOs, OpenAPI, specs y pruebas. No cambiar límites sin decisión del PO.
 
-**Decide:** David (PO). **Estado:** abierta.
+**Decide:** David (PO). **Estado:** resuelta (2026-11-06, F2-D50): se quedan los límites implementados, apodo 3–24 y nombre de grupo 2–40; se corrigen los documentos, no el código.
 
 ---
 
@@ -383,7 +384,7 @@ Si el equipo prefiere una sola llamada, `POST /contracts/{id}/evidence` acepta `
 
 **Propuesta:** ejecutar una verificación Argon2id ficticia con un hash constante cuando no haya usuario y agregar una prueba de tiempo o de trabajo de hash. Requiere decisión antes de cambiar el flujo.
 
-**Decide:** David (PO). **Estado:** abierta.
+**Decide:** David (PO). **Estado:** resuelta (2026-11-06, F2-D51): con un correo inexistente (o una cuenta solo de Google) el login verifica un hash Argon2id ficticio para igualar el trabajo. Prueba `SddDecisionTests.Q020_LoginWithUnknownEmail_DoesTheSameHashWorkAsAWrongPassword`.
 
 ---
 
@@ -400,6 +401,24 @@ Si el equipo prefiere una sola llamada, `POST /contracts/{id}/evidence` acepta `
 **Impacto:** medio; política de contenido, fallo cerrado y pruebas de abuso.
 
 **Propuesta:** invocar el mismo adaptador de moderación de texto usado en contratos, con fallo cerrado y `422 CONTENT_REJECTED`; o retirar formalmente el requisito. No cambiar el comportamiento sin decisión.
+
+**Decide:** David (PO). **Estado:** resuelta (2026-11-06, F2-D52): el nombre del grupo pasa por la moderación de texto antes de guardarse; rechazo `422 CONTENT_REJECTED`, moderador caído `503` (falla cerrada). Prueba `SddDecisionTests.Q021_GroupNameRejectedByModeration_Returns422AndIsNotStored`.
+
+---
+
+## Q-022 — Cancelación de un reto aceptado por el administrador
+
+**Pregunta:** ¿Con qué endpoint cancela el administrador un reto ya aceptado (`in_progress`) y qué pasa con la fianza?
+
+**Fuentes:**
+
+- CLARIFICACION #35: después de `open` solo se cancela por salida o expulsión de un participante, o por decisión del administrador.
+- CRUD hoja Contratos: CON-05 solo cancela retos que nadie ha aceptado; no hay endpoint para el administrador.
+- VOT-04 resuelve votaciones (empate, vencida, sin jurados), no retos en `in_progress`.
+
+**Impacto:** medio; spec 004 lo deja fuera de alcance.
+
+**Propuesta:** `POST /contracts/{id}/cancel` solo para `admin`, desde `in_progress`, con motivo obligatorio, devolución de la fianza (`bond_release`) y auditoría; requiere agregar el ID al CRUD.
 
 **Decide:** David (PO). **Estado:** abierta.
 

@@ -27,7 +27,22 @@ public static class CommitmentEndpoints
             .Produces<IReadOnlyList<CommitmentResponse>>()
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
+        app.MapGet("/api/v1/groups/{gid}/commitments/summary", async (string gid, CommitmentService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.SummaryAsync(context.User.GetRequiredObjectId(), gid, cancellationToken)))
+            .WithTags("Commitments")
+            .RequireAuthorization()
+            .WithName("CommitmentSummary")
+            .Produces<CommitmentSummaryResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
         var group = app.MapGroup("/api/v1/commitments/{id}").WithTags("Commitments").RequireAuthorization();
+
+        group.MapGet("", async (string id, CommitmentService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GetAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .WithName("GetCommitment")
+            .Produces<CommitmentResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/complete", async (string id, CommitmentService service, HttpContext context, CancellationToken cancellationToken) =>
                 ApiResults.Ok(await service.CompleteAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))

@@ -24,4 +24,10 @@ public interface ICommitmentRepository
         string toStatus,
         DateTime now,
         CancellationToken cancellationToken);
+
+    /// <summary>COM-05: compromisos abiertos (pending o completion_requested) como deudor o acreedor.</summary>
+    Task<int> CountOpenAsync(ObjectId groupId, ObjectId userId, bool asDebtor, CancellationToken cancellationToken);
+
+    /// <summary>USR-04: cierra los compromisos abiertos de la persona (status cancelled).</summary>
+    Task CloseOpenForUserAsync(ObjectId userId, DateTime now, CancellationToken cancellationToken);
 }

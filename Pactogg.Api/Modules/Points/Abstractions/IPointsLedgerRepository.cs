@@ -13,4 +13,7 @@ public interface IPointsLedgerRepository
         int limit,
         ObjectId? cursor,
         CancellationToken cancellationToken);
+
+    /// <summary>PTS-03.</summary>
+    Task<PointsLedgerEntry?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken);
 }

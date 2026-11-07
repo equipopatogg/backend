@@ -32,6 +32,22 @@ public static class PointsEndpoints
             .Produces<IReadOnlyList<RankingEntryResponse>>()
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
+        app.MapGet("/api/v1/points/movements/{id}", async (string id, PointsService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GetMovementAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .WithTags("Points")
+            .RequireAuthorization()
+            .WithName("GetPointsMovement")
+            .Produces<PointsMovementResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        app.MapGet("/api/v1/groups/{gid}/ranking", async (string gid, int? limit, PointsService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GroupRankingAsync(context.User.GetRequiredObjectId(), gid, limit ?? 20, cancellationToken)))
+            .WithTags("Points")
+            .RequireAuthorization()
+            .WithName("GetGroupRanking")
+            .Produces<GroupRankingResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
         return app;
     }
 }

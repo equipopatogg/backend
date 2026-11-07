@@ -31,6 +31,17 @@ public static class UserEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapDelete("/me", async ([Microsoft.AspNetCore.Mvc.FromBody] DeleteAccountRequest request, AccountDeletionService service, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                await service.DeleteAsync(context.User, request, cancellationToken);
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<DeleteAccountRequest>>()
+            .WithName("DeleteAccount")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapGet("/check-nickname", async (string? nickname, UserService service, CancellationToken cancellationToken) =>
                 ApiResults.Ok(await service.CheckNicknameAsync(nickname, cancellationToken)))
             .AllowAnonymous()

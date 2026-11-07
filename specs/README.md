@@ -2,13 +2,18 @@
 
 Estado 2026-11-04: corte de evaluación desplegado en AWS (costo cero) 11 endpoints sociales (v0.5.0) y 15 de jurado/puntos/compromisos/avisos (v0.6.0) verificados localmente. [Validación](validation.md) · [Preguntas abiertas](open-questions.md) · [Endpoints](../docs/endpoints.md).
 
-## Especificaciones por funcionalidad (SDD, sprint 2)
+## Especificaciones por funcionalidad (SDD, sprints 2 y 3)
 
 | Feature | Alcance | Estado |
 |---|---|---|
 | [001 Infraestructura y DevSecOps](001-infraestructura-devsecops/spec.md) | Terraform (crear/eliminar desde pipeline), CI/CD con CodeQL, Semgrep, Trivy, Dockle y compuerta, script de la BD | Implementado |
 | [002 Cuentas y sesión](002-cuentas-y-sesion/spec.md) | IDs 11, 12 (Google), 13, 14, 15, 19, 21, 22, 158 | Implementado |
 | [003 Grupos](003-grupos/spec.md) | IDs 30, 31, 32, 159 | Implementado |
+| [004 Contratos y demo](004-contratos-y-demo/spec.md) | IDs 42, 43, 44, 70, 160 (demo 1 y 5 solo en la app) | Implementado salvo 004-T8 (salida del creador) |
+| [005 Contrato por voz con IA](005-contrato-por-voz/spec.md) | IDs 56–60, CON-08 | Spec lista; código pendiente del modelo de IA (Q-007) |
+| [006 Push, permisos y sin conexión](006-push-permisos-offline/spec.md) | IDs 69, 143, 147, permisos, Room | Backend implementado salvo 006-T7..T10; parte móvil pendiente |
+
+[Validación SDD 001–003](validacion-001-003.md) (2026-11-06): las tres specs cumplen CLARIFICACION #138; aprobadas por el PO; falta la revisión de Kevin y José.
 
 Cada feature agrupa los expedientes por endpoint de abajo e incluye spec, plan, tareas y checklist de validación. [Plan de pruebas](../docs/plan-de-pruebas.md).
 
@@ -26,9 +31,9 @@ Cada feature agrupa los expedientes por endpoint de abajo e incluye spec, plan, 
 | Expediente | Endpoint | Implementación | Límite pendiente |
 |---|---|---|---|
 | [USR-01](USR-01-register/spec.md) | `POST /api/v1/auth/register` | Registro y sesión | Duplicados/rate limit dedicados |
-| [AUTH-01](AUTH-01-login/spec.md) | `POST /api/v1/auth/login` | Login y bloqueo | Pruebas de bloqueo/timing |
+| [AUTH-01](AUTH-01-login/spec.md) | `POST /api/v1/auth/login` | Login, bloqueo y hash ficticio para correo inexistente (F2-D51) | Prueba dedicada de bloqueo |
 | [AUTH-04](AUTH-04-logout/spec.md) | `POST /api/v1/auth/logout` | Revocación | `all=true` dedicado |
-| [GRP-01](GRP-01-create-group/spec.md) | `POST /api/v1/groups` | Grupo, admin y código | Moderación de nombre |
+| [GRP-01](GRP-01-create-group/spec.md) | `POST /api/v1/groups` | Grupo, admin, código y nombre moderado (F2-D52) | — |
 | [CON-01](CON-01-create-contract/spec.md) | `POST /api/v1/contracts` + alias anidado | Contrato y moderación | Fianza/objetivo/auto-reto |
 | [EVI-02](EVI-02-evidence/spec.md) | `POST /api/v1/contracts/{id}/evidence` | Enlace/foto y S3 | S3/AWS real, transición |
 | [TOR-02](TOR-02-list-tournaments/spec.md) | `GET /api/v1/tournaments` + alias anidado | Lista, filtros y bracket | IDOR/cursor dedicados |
@@ -81,4 +86,15 @@ Cada feature agrupa los expedientes por endpoint de abajo e incluye spec, plan, 
 | [DEV-01..03, NOT-04](DEV-01-03-push/spec.md) | `PUT`/`DELETE /api/v1/devices/me`, `GET`/`PATCH /api/v1/devices/me/preferences`, `DELETE /api/v1/notifications/{id}` | ID 143 · Push; ID 69 · Aviso de reto recibido; ID 147 · Centro de notificaciones |
 
 Cada expediente conserva spec, plan, tareas y checklist con IDs. Una casilla completa significa verificación local, no aceptación institucional. Las rutas alias se documentan en el expediente principal. `api/openapi.yaml` es el contrato único.
+
+## Administración, cuenta, reportes y detalles (v0.9.0)
+
+| Expediente | Endpoints | Historia |
+|---|---|---|
+| [GRP-04..07, MEM-03..06](GRP-04-07-MEM-03-06-group-admin/spec.md) | Editar y eliminar grupo, regenerar y activar código, roles, expulsar, salir, mi membresía | ID 30–32 (administración) |
+| [USR-04](USR-04-delete-account/spec.md) | `DELETE /api/v1/users/me` | ID 29 · Eliminación de cuenta y datos |
+| [REP-01..06](REP-01-06-reports-blocks/spec.md) | Reportes, quitar contenido, bloquear | ID 149, ID 153 |
+| [PTS-03, COM-02, COM-05, ACH-03](PTS-03-COM-02-05-ACH-03-details/spec.md) | Movimiento, compromiso, resumen, ranking y Rey del Grupo | ID 124, 125, 159 |
+
+Desde el 2026-11-06 los 50 expedientes tienen spec, plan, tareas y checklist.
 

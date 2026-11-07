@@ -37,4 +37,7 @@ public sealed class MongoPointsLedgerRepository : IPointsLedgerRepository
         var items = await _context.PointsLedger.Find(filter).SortByDescending(x => x.Id).Limit(limit + 1).ToListAsync(cancellationToken);
         return (items.Take(limit).ToList(), items.Count > limit);
     }
+
+    public async Task<PointsLedgerEntry?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        await _context.PointsLedger.Find(x => x.Id == id).FirstOrDefaultAsync(cancellationToken);
 }

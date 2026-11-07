@@ -76,4 +76,27 @@ public sealed class MongoGroupRepository : IGroupRepository
 
     public Task DeleteAsync(ObjectId id, CancellationToken cancellationToken) =>
         _context.Groups.DeleteOneAsync(x => x.Id == id, cancellationToken);
+
+    public async Task<Group?> UpdateAsync(ObjectId id, string name, GroupSettings settings, DateTime now, CancellationToken cancellationToken) =>
+        await _context.Groups.FindOneAndUpdateAsync(
+            Builders<Group>.Filter.Where(x => x.Id == id && x.DeletedAt == null),
+            Builders<Group>.Update.Set(x => x.Name, name).Set(x => x.Settings, settings).Set(x => x.UpdatedAt, now),
+            new FindOneAndUpdateOptions<Group> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+
+    public async Task<Group?> SetInviteAsync(ObjectId id, string inviteCode, bool active, DateTime now, CancellationToken cancellationToken) =>
+        await _context.Groups.FindOneAndUpdateAsync(
+            Builders<Group>.Filter.Where(x => x.Id == id && x.DeletedAt == null),
+            Builders<Group>.Update.Set(x => x.InviteCode, inviteCode).Set(x => x.InviteActive, active).Set(x => x.UpdatedAt, now),
+            new FindOneAndUpdateOptions<Group> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+
+    public Task SoftDeleteAsync(ObjectId id, DateTime now, CancellationToken cancellationToken) =>
+        _context.Groups.UpdateOneAsync(
+            x => x.Id == id && x.DeletedAt == null,
+            Builders<Group>.Update.Set(x => x.DeletedAt, now).Set(x => x.InviteActive, false).Set(x => x.MemberCount, 0).Set(x => x.UpdatedAt, now),
+            cancellationToken: cancellationToken);
+
+    public Task SetOwnerAsync(ObjectId id, ObjectId ownerId, DateTime now, CancellationToken cancellationToken) =>
+        _context.Groups.UpdateOneAsync(x => x.Id == id, Builders<Group>.Update.Set(x => x.OwnerId, ownerId).Set(x => x.UpdatedAt, now), cancellationToken: cancellationToken);
 }

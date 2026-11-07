@@ -64,4 +64,20 @@ public sealed class MongoCommitmentRepository : ICommitmentRepository
             new FindOneAndUpdateOptions<Commitment> { ReturnDocument = ReturnDocument.After },
             cancellationToken);
     }
+
+    public async Task<int> CountOpenAsync(ObjectId groupId, ObjectId userId, bool asDebtor, CancellationToken cancellationToken)
+    {
+        var builder = Builders<Commitment>.Filter;
+        var filter = builder.Eq(x => x.GroupId, groupId)
+            & builder.In(x => x.Status, new[] { "pending", "completion_requested" })
+            & (asDebtor ? builder.Eq(x => x.DebtorId, userId) : builder.Eq(x => x.CreditorId, userId));
+        return (int)await _context.Commitments.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+    }
+
+    public Task CloseOpenForUserAsync(ObjectId userId, DateTime now, CancellationToken cancellationToken) =>
+        _context.Commitments.UpdateManyAsync(
+            Builders<Commitment>.Filter.In(x => x.Status, new[] { "pending", "completion_requested" })
+                & (Builders<Commitment>.Filter.Eq(x => x.DebtorId, userId) | Builders<Commitment>.Filter.Eq(x => x.CreditorId, userId)),
+            Builders<Commitment>.Update.Set(x => x.Status, "cancelled").Set(x => x.UpdatedAt, now),
+            cancellationToken: cancellationToken);
 }

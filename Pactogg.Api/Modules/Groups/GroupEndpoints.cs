@@ -86,6 +86,78 @@ public static class GroupEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // ---------- GRP-04..07, MEM-03..06: administración ----------
+        group.MapPatch("/{id}", async (string id, UpdateGroupRequest request, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.UpdateAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<UpdateGroupRequest>>()
+            .WithName("UpdateGroup")
+            .Produces<GroupResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapDelete("/{id}", async (string id, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                await service.DeleteAsync(context.User.GetRequiredObjectId(), id, cancellationToken);
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .WithName("DeleteGroup")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapPost("/{id}/invite-code/regenerate", async (string id, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.RegenerateInviteAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("RegenerateInviteCode")
+            .Produces<GroupResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapPatch("/{id}/invite-code", async (string id, SetInviteActiveRequest request, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.SetInviteActiveAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<SetInviteActiveRequest>>()
+            .WithName("SetInviteCodeActive")
+            .Produces<GroupResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapGet("/{id}/members/me", async (string id, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GetMyMembershipAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("GetMyMembership")
+            .Produces<GroupMemberResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapDelete("/{id}/members/me", async (string id, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                await service.LeaveAsync(context.User.GetRequiredObjectId(), id, cancellationToken);
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .WithName("LeaveGroup")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPatch("/{id}/members/{uid}", async (string id, string uid, SetRoleRequest request, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.SetRoleAsync(context.User.GetRequiredObjectId(), id, uid, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<SetRoleRequest>>()
+            .WithName("SetMemberRole")
+            .Produces<GroupMemberResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/{id}/members/{uid}", async (string id, string uid, GroupService service, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                await service.RemoveMemberAsync(context.User.GetRequiredObjectId(), id, uid, cancellationToken);
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .WithName("RemoveMember")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return app;
     }
 }
