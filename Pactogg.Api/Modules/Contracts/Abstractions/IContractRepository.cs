@@ -65,6 +65,12 @@ public interface IContractRepository
     /// <summary>voting → cancelled (closed_reason) devolviendo la fianza a quien aceptó (bond_release). Null si ya cambió.</summary>
     Task<Contract?> TryCancelVotingWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken);
 
+    /// <summary>Retos activos (open, in_progress, voting) de un grupo; si userId viene, solo donde es retador, retado o quien aceptó.</summary>
+    Task<IReadOnlyList<Contract>> ListActiveAsync(ObjectId groupId, ObjectId? userId, CancellationToken cancellationToken);
+
+    /// <summary>Cancela un reto activo y devuelve la fianza retenida a quien aceptó (CLARIFICACION #26, #37).</summary>
+    Task<Contract?> TryCancelActiveWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken);
+
     /// <summary>
     /// CON-06 en una sola transacción: open → in_progress (con versión esperada), descuenta la fianza
     /// del saldo del miembro solo si alcanza (nunca negativo) e inserta el movimiento bond_lock en points_ledger.

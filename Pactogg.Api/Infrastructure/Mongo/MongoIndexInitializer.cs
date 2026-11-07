@@ -173,6 +173,26 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Name = "ix_devices_user" })
         ], cancellationToken);
 
+        // REP-01/05: un reporte por persona y objetivo; un bloqueo por pareja.
+        await _context.Reports.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Reports.Report>(
+                Builders<Modules.Reports.Report>.IndexKeys.Ascending(x => x.ReporterId).Ascending(x => x.TargetType).Ascending(x => x.TargetId),
+                new CreateIndexOptions { Name = "ux_reports_reporter_target", Unique = true }),
+            new CreateIndexModel<Modules.Reports.Report>(
+                Builders<Modules.Reports.Report>.IndexKeys.Ascending(x => x.GroupId).Ascending(x => x.Status).Descending(x => x.Id),
+                new CreateIndexOptions { Name = "ix_reports_group_status" })
+        ], cancellationToken);
+        await _context.Blocks.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Reports.UserBlock>(
+                Builders<Modules.Reports.UserBlock>.IndexKeys.Ascending(x => x.BlockerId).Ascending(x => x.BlockedId),
+                new CreateIndexOptions { Name = "ux_blocks_pair", Unique = true }),
+            new CreateIndexModel<Modules.Reports.UserBlock>(
+                Builders<Modules.Reports.UserBlock>.IndexKeys.Ascending(x => x.BlockedId),
+                new CreateIndexOptions { Name = "ix_blocks_blocked" })
+        ], cancellationToken);
+
         // CLARIFICACION #118: retención de 30 días. El índice TTL anterior (90 d) se reemplaza.
         try
         {

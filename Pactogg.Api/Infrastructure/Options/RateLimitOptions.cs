@@ -19,4 +19,6 @@ public sealed class RateLimitOptions
     public int JoinWindowSeconds { get; set; } = 600;
     public int AccountPermitLimit { get; set; } = 10;
     public int AccountWindowSeconds { get; set; } = 3600;
+    public int ReportPermitLimit { get; set; } = 10;
+    public int ReportWindowSeconds { get; set; } = 3600;
 }

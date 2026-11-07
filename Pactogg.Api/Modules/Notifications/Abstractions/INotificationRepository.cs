@@ -19,4 +19,6 @@ public interface INotificationRepository
     Task<Notification?> MarkReadAsync(ObjectId id, ObjectId userId, DateTime at, CancellationToken cancellationToken);
     Task<long> MarkAllReadAsync(ObjectId userId, DateTime at, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(ObjectId id, ObjectId userId, CancellationToken cancellationToken);
+
+    Task DeleteAllForUserAsync(ObjectId userId, CancellationToken cancellationToken);
 }

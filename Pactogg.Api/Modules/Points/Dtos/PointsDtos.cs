@@ -26,3 +26,10 @@ public sealed class RankingEntryResponse
     public string AvatarId { get; init; } = "default";
     public int PointsBalance { get; init; }
 }
+
+/// <summary>ACH-03. Rey del Grupo = primer lugar sin empate; null si hay empate en el primer lugar.</summary>
+public sealed class GroupRankingResponse
+{
+    public RankingEntryResponse? King { get; init; }
+    public IReadOnlyList<RankingEntryResponse> Items { get; init; } = [];
+}

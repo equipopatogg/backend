@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: PactoGG API
   version: 1.0.0
-  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1); reglas de votación, plazos, idempotencia y límites de los documentos (v0.7.0); verificación de correo, recuperación y cambio de contraseña, perfil público, editar/cancelar retos, auditoría y push con FCM (v0.8.0).
+  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1); reglas de votación, plazos, idempotencia y límites de los documentos (v0.7.0); verificación de correo, recuperación y cambio de contraseña, perfil público, editar/cancelar retos, auditoría y push con FCM (v0.8.0); validación SDD 001–006 con nombre de grupo y juego moderados, login sin pista por tiempo, /health/ready y tope de 5 dispositivos (v0.8.1); administración de grupos, borrar cuenta, reportes, bloqueos y detalles (v0.9.0).
 servers:
   - url: https://52-3-200-211.sslip.io
     description: Producción AWS (HTTPS, Let's Encrypt; cambia si se recrea la infraestructura)
@@ -23,6 +23,23 @@ tags:
   - name: Devices
   - name: Audit
 paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Vida del proceso (la usa Caddy para balancear)
+      security: []
+      responses:
+        '200': { description: Healthy }
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: healthReady
+      summary: Lista para atender, incluida la base de datos (CLARIFICACION #136, F2-D54)
+      security: []
+      responses:
+        '200': { description: Healthy }
+        '503': { description: Unhealthy; la base de datos no responde }
   /api/v1/auth/register:
     post:
       tags: [Auth]
@@ -53,6 +70,9 @@ paths:
       tags: [Auth]
       operationId: login
       summary: Iniciar sesión
+      description: >-
+        AUTH-01. Respuesta genérica 401 INVALID_CREDENTIALS. Con un correo inexistente también se verifica un hash
+        Argon2id para que el tiempo de respuesta no revele qué cuentas existen (Q-020).
       security: []
       requestBody:
         required: true
@@ -289,6 +309,29 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    delete:
+      tags: [Users]
+      operationId: deleteAccount
+      summary: Eliminar cuenta (USR-04), borra y anonimiza de inmediato
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm]
+              properties:
+                password: { type: string, maxLength: 128 }
+                confirm: { type: string, enum: [ELIMINAR] }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/users/check-nickname:
     get:
       tags: [Users]
@@ -432,6 +475,9 @@ paths:
       tags: [Groups]
       operationId: createGroup
       summary: Crear grupo
+      description: >-
+        GRP-01. Nombre de 2 a 40 caracteres (Q-019). El nombre pasa por moderación de texto antes de guardarse;
+        si se rechaza responde 422 CONTENT_REJECTED y si el moderador no responde, 503 (falla cerrada, Q-021).
       security:
         - BearerAuth: []
       requestBody:
@@ -454,6 +500,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/groups/join:
     post:
       tags: [Groups]
@@ -506,6 +553,43 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/Group' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Groups]
+      operationId: updateGroup
+      summary: Editar nombre y reglas (GRP-04, admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 2, maxLength: 40 }
+                settings: { $ref: '#/components/schemas/GroupSettings' }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Groups]
+      operationId: deleteGroup
+      summary: Eliminar grupo (GRP-05, solo el creador)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1455,6 +1539,289 @@ paths:
                       data: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/groups/{id}/invite-code/regenerate:
+    post:
+      tags: [Groups]
+      operationId: regenerateInviteCode
+      summary: Regenerar código de invitación (GRP-06, admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/groups/{id}/invite-code:
+    patch:
+      tags: [Groups]
+      operationId: setInviteCodeActive
+      summary: Activar o desactivar el código (GRP-07, admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/groups/{id}/members/me:
+    get:
+      tags: [Groups]
+      operationId: getMyMembership
+      summary: Mi rol y saldo en el grupo (MEM-06)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Groups]
+      operationId: leaveGroup
+      summary: Salir del grupo (MEM-05); el creador no puede (409 OWNER_CANNOT_LEAVE)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/groups/{id}/members/{uid}:
+    patch:
+      tags: [Groups]
+      operationId: setMemberRole
+      summary: Cambiar rol (MEM-03, admin; el creador no se toca)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, member] }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Groups]
+      operationId: removeMember
+      summary: Expulsar miembro (MEM-04, admin); cancela sus retos y devuelve fianzas
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/points/movements/{id}:
+    get:
+      tags: [Points]
+      operationId: getPointsMovement
+      summary: Detalle de un movimiento (PTS-03; dueño o admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/groups/{gid}/ranking:
+    get:
+      tags: [Points]
+      operationId: getGroupRanking
+      summary: Ranking del grupo y Rey del Grupo (ACH-03)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/commitments/{id}:
+    get:
+      tags: [Commitments]
+      operationId: getCommitment
+      summary: Detalle de un compromiso (COM-02)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/groups/{gid}/commitments/summary:
+    get:
+      tags: [Commitments]
+      operationId: commitmentSummary
+      summary: Contador Debo / Me deben (COM-05)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/reports:
+    post:
+      tags: [Reports]
+      operationId: createReport
+      summary: Reportar foto, comentario o usuario (REP-01); 10 por hora
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [group_id, target_type, target_id, reason]
+              properties:
+                group_id: { type: string }
+                target_type: { type: string, enum: [evidence, comment, user] }
+                target_id: { type: string }
+                reason: { type: string, enum: [ofensivo, sexual, odio, spam, trampa, otro] }
+                details: { type: string, maxLength: 280 }
+      responses:
+        '201': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/groups/{gid}/reports:
+    get:
+      tags: [Reports]
+      operationId: listGroupReports
+      summary: Reportes del grupo (REP-02, admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: string } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/reports/{id}/resolve:
+    post:
+      tags: [Reports]
+      operationId: resolveReport
+      summary: Resolver reporte (REP-03, admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action: { type: string, enum: [dismiss, remove_content] }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/groups/{gid}/content/{type}/{id}:
+    delete:
+      tags: [Reports]
+      operationId: removeGroupContent
+      summary: Quitar foto o comentario (REP-04, admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string } }
+        - { name: type, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/users/{id}/block:
+    post:
+      tags: [Reports]
+      operationId: blockUser
+      summary: Bloquear usuario (REP-05)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Reports]
+      operationId: unblockUser
+      summary: Quitar bloqueo (REP-06)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     BearerAuth:

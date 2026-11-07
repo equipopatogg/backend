@@ -46,6 +46,8 @@ public class PactoggWebFactory : WebApplicationFactory<Program>
     public InMemoryDeviceRepository Devices { get; } = new();
     public FakeEmailSender Email { get; } = new();
     public FakePushSender Push { get; } = new();
+    public InMemoryReportRepository Reports { get; } = new();
+    public InMemoryBlockRepository Blocks { get; } = new();
 
     public PactoggWebFactory()
     {
@@ -119,6 +121,10 @@ public class PactoggWebFactory : WebApplicationFactory<Program>
             services.AddSingleton<Pactogg.Api.Infrastructure.Email.IEmailSender>(Email);
             services.RemoveAll<Pactogg.Api.Infrastructure.Push.IPushSender>();
             services.AddSingleton<Pactogg.Api.Infrastructure.Push.IPushSender>(Push);
+            services.RemoveAll<Pactogg.Api.Modules.Reports.IReportRepository>();
+            services.AddSingleton<Pactogg.Api.Modules.Reports.IReportRepository>(Reports);
+            services.RemoveAll<Pactogg.Api.Modules.Reports.IBlockRepository>();
+            services.AddSingleton<Pactogg.Api.Modules.Reports.IBlockRepository>(Blocks);
             services.AddTransient<IStartupFilter, IdempotencyTestHandler>();
         });
     }

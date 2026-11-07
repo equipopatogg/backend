@@ -33,6 +33,8 @@ public sealed class AccountService
     private readonly EmailOptions _emailOptions;
     private readonly AuthOptions _authOptions;
 
+    private readonly Pactogg.Api.Modules.Devices.IDeviceRepository _devices;
+
     public AccountService(
         IUserRepository users,
         IRefreshTokenRepository refreshTokens,
@@ -43,7 +45,8 @@ public sealed class AccountService
         IAuditService audit,
         ICacheService cache,
         IOptions<EmailOptions> emailOptions,
-        IOptions<AuthOptions> authOptions)
+        IOptions<AuthOptions> authOptions,
+        Pactogg.Api.Modules.Devices.IDeviceRepository devices)
     {
         _users = users;
         _refreshTokens = refreshTokens;
@@ -55,6 +58,7 @@ public sealed class AccountService
         _cache = cache;
         _emailOptions = emailOptions.Value;
         _authOptions = authOptions.Value;
+        _devices = devices;
     }
 
     /// <summary>Envía el correo de verificación. Se llama al registrarse y en AUTH-05 reenviar.</summary>
@@ -148,6 +152,7 @@ public sealed class AccountService
         // Quien abrió el enlace demostró que controla el correo.
         await _users.SetEmailVerifiedAsync(userId, now, cancellationToken);
         await _refreshTokens.RevokeAllForUserAsync(userId, now, cancellationToken);
+        await _devices.DeleteAsync(userId, null, cancellationToken);
         await _cache.BumpVersionAsync(CacheExtensions.UserScope(userId), cancellationToken);
         await _audit.AppendAsync("auth.password_reset", userId, "user", userId, null, new { user_id = userId.ToString() }, cancellationToken);
     }

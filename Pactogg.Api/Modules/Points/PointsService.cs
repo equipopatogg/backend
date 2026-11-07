@@ -79,6 +79,41 @@ public sealed class PointsService
         return (data, new { next_cursor = next, has_more = hasMore });
     }
 
+    /// <summary>PTS-03: detalle de un movimiento; solo el dueño o un admin de su grupo.</summary>
+    public async Task<PointsMovementResponse> GetMovementAsync(ObjectId userId, string id, CancellationToken cancellationToken)
+    {
+        var entry = ObjectId.TryParse(id, out var entryId) ? await _ledger.GetByIdAsync(entryId, cancellationToken) : null;
+        if (entry is null)
+        {
+            throw ApiException.NotFound("El movimiento no existe.");
+        }
+
+        var (_, member) = await _access.RequireMemberAsync(userId, entry.GroupId, cancellationToken);
+        if (entry.UserId != userId && member.Role != "admin")
+        {
+            throw ApiException.NotFound("El movimiento no existe.");
+        }
+
+        return new PointsMovementResponse
+        {
+            Id = entry.Id.ToString(),
+            Type = entry.Type,
+            Amount = entry.Amount,
+            BalanceAfter = entry.BalanceAfter,
+            RefType = entry.RefType,
+            RefId = entry.RefId.ToString(),
+            CreatedAt = entry.CreatedAt
+        };
+    }
+
+    /// <summary>ACH-03: ranking del grupo por puntos (sin temporadas en la primera versión, CLARIFICACION #113) y Rey del Grupo.</summary>
+    public async Task<GroupRankingResponse> GroupRankingAsync(ObjectId userId, string gid, int limit, CancellationToken cancellationToken)
+    {
+        var items = await RankingAsync(userId, gid, limit, cancellationToken);
+        var king = items.FirstOrDefault(x => x.PointsBalance > 0 && (items.Count == 1 || items[1].PointsBalance < x.PointsBalance));
+        return new GroupRankingResponse { King = king, Items = items };
+    }
+
     public async Task<IReadOnlyList<RankingEntryResponse>> RankingAsync(ObjectId userId, string gid, int limit, CancellationToken cancellationToken)
     {
         ListQuery.ValidateLimit(limit);

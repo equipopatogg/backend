@@ -571,4 +571,47 @@ public sealed class MongoContractRepository : IContractRepository
             throw;
         }
     }
+
+    private static readonly string[] ActiveStatuses = ["open", "in_progress", "voting"];
+
+    public async Task<IReadOnlyList<Contract>> ListActiveAsync(ObjectId groupId, ObjectId? userId, CancellationToken cancellationToken)
+    {
+        var builder = Builders<Contract>.Filter;
+        var filter = builder.Eq(x => x.GroupId, groupId) & builder.In(x => x.Status, ActiveStatuses);
+        if (userId is ObjectId uid)
+        {
+            filter &= builder.Or(
+                builder.Eq(x => x.ChallengerId, uid),
+                builder.Eq(x => x.AcceptedBy, uid),
+                builder.Eq(x => x.TargetId, uid));
+        }
+
+        return await _context.Contracts.Find(filter).Limit(200).ToListAsync(cancellationToken);
+    }
+
+    public async Task<Contract?> TryCancelActiveWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken)
+    {
+        return await InTransactionAsync(async session =>
+        {
+            var contract = await _context.Contracts.FindOneAndUpdateAsync(
+                session,
+                Builders<Contract>.Filter.Eq(x => x.Id, id) & Builders<Contract>.Filter.In(x => x.Status, ActiveStatuses),
+                Builders<Contract>.Update
+                    .Set(x => x.Status, "cancelled")
+                    .Set(x => x.ClosedReason, reason)
+                    .Set(x => x.ResolvedBy, "system")
+                    .Set(x => x.ResolvedAt, now)
+                    .Set(x => x.UpdatedAt, now)
+                    .Inc(x => x.Version, 1),
+                new FindOneAndUpdateOptions<Contract> { ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+
+            if (contract is { AcceptedBy: ObjectId acceptor, BondRequired: > 0 })
+            {
+                await CreditAsync(session, contract, acceptor, contract.BondRequired, "bond_release", now, cancellationToken);
+            }
+
+            return contract;
+        }, cancellationToken);
+    }
 }

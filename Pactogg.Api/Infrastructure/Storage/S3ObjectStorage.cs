@@ -82,4 +82,25 @@ public sealed class S3ObjectStorage : IObjectStorage
             return Task.FromResult<string?>(null);
         }
     }
+
+    public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(objectKey) || string.IsNullOrWhiteSpace(_options.BucketName))
+        {
+            return;
+        }
+
+        try
+        {
+            await _s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = _options.BucketName, Key = objectKey }, cancellationToken);
+        }
+        catch (AmazonS3Exception)
+        {
+            throw ApiException.ServiceUnavailable(ErrorCodes.StorageUnavailable, "No se pudo borrar la foto.");
+        }
+        catch (AmazonClientException)
+        {
+            throw ApiException.ServiceUnavailable(ErrorCodes.StorageUnavailable, "No se pudo borrar la foto.");
+        }
+    }
 }

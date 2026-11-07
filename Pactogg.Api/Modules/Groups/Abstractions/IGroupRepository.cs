@@ -20,4 +20,16 @@ public interface IGroupRepository
     Task<Group?> TryIncrementMemberCountAsync(ObjectId id, int maxMembers, DateTime at, CancellationToken cancellationToken);
     Task DecrementMemberCountAsync(ObjectId id, CancellationToken cancellationToken);
     Task DeleteAsync(ObjectId id, CancellationToken cancellationToken);
+
+    /// <summary>GRP-04: cambia nombre y ajustes.</summary>
+    Task<Group?> UpdateAsync(ObjectId id, string name, GroupSettings settings, DateTime now, CancellationToken cancellationToken);
+
+    /// <summary>GRP-06 / GRP-07: código nuevo o activo/inactivo.</summary>
+    Task<Group?> SetInviteAsync(ObjectId id, string inviteCode, bool active, DateTime now, CancellationToken cancellationToken);
+
+    /// <summary>GRP-05: borrado lógico.</summary>
+    Task SoftDeleteAsync(ObjectId id, DateTime now, CancellationToken cancellationToken);
+
+    /// <summary>USR-04: el grupo pasa a otro dueño cuando el creador elimina su cuenta.</summary>
+    Task SetOwnerAsync(ObjectId id, ObjectId ownerId, DateTime now, CancellationToken cancellationToken);
 }

@@ -47,6 +47,12 @@ public static class ErrorCodes
     public const string AlreadyVoted = "ALREADY_VOTED";
     public const string VotingNotFinished = "VOTING_NOT_FINISHED";
     public const string NotGroupAdmin = "NOT_GROUP_ADMIN";
+    public const string NotGroupOwner = "NOT_GROUP_OWNER";
+    public const string CannotModifyOwner = "CANNOT_MODIFY_OWNER";
+    public const string OwnerCannotLeave = "OWNER_CANNOT_LEAVE";
+    public const string AlreadyReported = "ALREADY_REPORTED";
+    public const string InvalidReportState = "INVALID_REPORT_STATE";
+    public const string BlockedByUser = "BLOCKED_BY_USER";
     public const string NotCommitmentParty = "NOT_COMMITMENT_PARTY";
     public const string InvalidCommitmentState = "INVALID_COMMITMENT_STATE";
     public const string CannotAcceptOwnContract = "CANNOT_ACCEPT_OWN_CONTRACT";

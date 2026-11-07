@@ -33,4 +33,17 @@ public sealed class MongoEvidenceRepository : IEvidenceRepository
             .SortBy(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<EvidenceEntity?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        await _context.Evidences.Find(x => x.Id == id).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<EvidenceEntity?> MarkRemovedAsync(ObjectId id, DateTime now, CancellationToken cancellationToken) =>
+        await _context.Evidences.FindOneAndUpdateAsync(
+            Builders<EvidenceEntity>.Filter.Where(x => x.Id == id && x.Moderation.Status != "removed"),
+            Builders<EvidenceEntity>.Update.Set(x => x.Moderation.Status, "removed").Set(x => x.Moderation.ModeratedAt, now).Set(x => x.SavedInFame, false),
+            new FindOneAndUpdateOptions<EvidenceEntity> { ReturnDocument = ReturnDocument.Before },
+            cancellationToken);
+
+    public async Task<IReadOnlyList<EvidenceEntity>> ListPhotosByUserAsync(ObjectId userId, CancellationToken cancellationToken) =>
+        await _context.Evidences.Find(x => x.UserId == userId && x.Type == "photo" && x.Moderation.Status != "removed").ToListAsync(cancellationToken);
 }

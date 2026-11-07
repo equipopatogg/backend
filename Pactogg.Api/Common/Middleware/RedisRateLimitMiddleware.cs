@@ -85,6 +85,12 @@ public sealed class RedisRateLimitMiddleware
             return ("join", _options.JoinPermitLimit, TimeSpan.FromSeconds(_options.JoinWindowSeconds));
         }
 
+        // REP-01: límite estricto en reportes (constitución §7.1).
+        if (string.Equals(path.Value, "/api/v1/reports", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("report", _options.ReportPermitLimit, TimeSpan.FromSeconds(_options.ReportWindowSeconds));
+        }
+
         if (path.Value?.EndsWith("/evidence", StringComparison.OrdinalIgnoreCase) == true)
         {
             return ("evidence", _options.EvidencePermitLimit, TimeSpan.FromSeconds(_options.EvidenceWindowSeconds));

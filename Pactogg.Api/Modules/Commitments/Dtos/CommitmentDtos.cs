@@ -20,3 +20,10 @@ public sealed class CommitmentResponse
     public DateTime? CompletedAt { get; init; }
     public DateTime CreatedAt { get; init; }
 }
+
+/// <summary>COM-05.</summary>
+public sealed class CommitmentSummaryResponse
+{
+    public int Debo { get; init; }
+    public int MeDeben { get; init; }
+}

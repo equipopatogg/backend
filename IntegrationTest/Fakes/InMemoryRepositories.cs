@@ -28,6 +28,20 @@ public sealed class InMemoryUserRepository : IUserRepository
 {
     private readonly ConcurrentDictionary<ObjectId, User> _users = new();
 
+    public IReadOnlyList<User> All() => _users.Values.ToList();
+
+    public Task AnonymizeAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        if (_users.TryGetValue(id, out var u))
+        {
+            u.Email = $"eliminado-{id}@pactogg.invalid"; u.PasswordHash = string.Empty; u.GoogleSub = null;
+            u.Nickname = "Usuario eliminado"; u.NicknameLower = $"eliminado:{id}"; u.AvatarId = "default";
+            u.Status = "deleted"; u.DeletedAt = now; u.UpdatedAt = now;
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<User?> GetByEmailAsync(string normalizedEmail, CancellationToken cancellationToken) =>
         Task.FromResult(_users.Values.FirstOrDefault(x => x.Email == normalizedEmail && x.DeletedAt is null));
 
@@ -208,8 +222,36 @@ public sealed class InMemoryGroupRepository : IGroupRepository
 {
     private readonly ConcurrentDictionary<ObjectId, Group> _groups = new();
 
+    public int Count => _groups.Count;
+
     public Task<Group?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
-        Task.FromResult(_groups.GetValueOrDefault(id));
+        Task.FromResult(_groups.TryGetValue(id, out var g) && g.DeletedAt is null ? g : null);
+
+    public Task<Group?> UpdateAsync(ObjectId id, string name, GroupSettings settings, DateTime now, CancellationToken cancellationToken)
+    {
+        if (!_groups.TryGetValue(id, out var g) || g.DeletedAt is not null) return Task.FromResult<Group?>(null);
+        g.Name = name; g.Settings = settings; g.UpdatedAt = now;
+        return Task.FromResult<Group?>(g);
+    }
+
+    public Task<Group?> SetInviteAsync(ObjectId id, string inviteCode, bool active, DateTime now, CancellationToken cancellationToken)
+    {
+        if (!_groups.TryGetValue(id, out var g) || g.DeletedAt is not null) return Task.FromResult<Group?>(null);
+        g.InviteCode = inviteCode; g.InviteActive = active; g.UpdatedAt = now;
+        return Task.FromResult<Group?>(g);
+    }
+
+    public Task SetOwnerAsync(ObjectId id, ObjectId ownerId, DateTime now, CancellationToken cancellationToken)
+    {
+        if (_groups.TryGetValue(id, out var g)) { g.OwnerId = ownerId; g.UpdatedAt = now; }
+        return Task.CompletedTask;
+    }
+
+    public Task SoftDeleteAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        if (_groups.TryGetValue(id, out var g)) { g.DeletedAt = now; g.InviteActive = false; g.MemberCount = 0; g.UpdatedAt = now; }
+        return Task.CompletedTask;
+    }
 
     public Task CreateAsync(Group group, CancellationToken cancellationToken)
     {
@@ -357,6 +399,32 @@ public sealed class InMemoryGroupMemberRepository : IGroupMemberRepository
 
     public GroupMember? Find(ObjectId groupId, ObjectId userId) =>
         _members.Values.FirstOrDefault(x => x.GroupId == groupId && x.UserId == userId);
+
+    public Task<GroupMember?> GetAnyAsync(ObjectId groupId, ObjectId userId, CancellationToken cancellationToken) =>
+        Task.FromResult(Find(groupId, userId));
+
+    public Task<GroupMember?> SetStatusAsync(ObjectId groupId, ObjectId userId, string status, DateTime now, CancellationToken cancellationToken)
+    {
+        var m = Find(groupId, userId);
+        if (m is null) return Task.FromResult<GroupMember?>(null);
+        m.Status = status; m.UpdatedAt = now;
+        if (status == "active") { m.JoinedAt = now; m.Role = "member"; }
+        return Task.FromResult<GroupMember?>(m);
+    }
+
+    public Task<GroupMember?> SetRoleAsync(ObjectId groupId, ObjectId userId, string role, DateTime now, CancellationToken cancellationToken)
+    {
+        var m = Find(groupId, userId);
+        if (m is null || m.Status != "active") return Task.FromResult<GroupMember?>(null);
+        m.Role = role; m.UpdatedAt = now;
+        return Task.FromResult<GroupMember?>(m);
+    }
+
+    public Task DeactivateAllAsync(ObjectId groupId, DateTime now, CancellationToken cancellationToken)
+    {
+        foreach (var m in _members.Values.Where(x => x.GroupId == groupId && x.Status == "active")) { m.Status = "left"; m.UpdatedAt = now; }
+        return Task.CompletedTask;
+    }
 
     /// <summary>Solo para pruebas: fija el saldo de un miembro.</summary>
     public void SetBalance(ObjectId groupId, ObjectId userId, int balance)
@@ -633,6 +701,33 @@ public sealed class InMemoryContractRepository : IContractRepository
         return contract;
     }
 
+    public Task<IReadOnlyList<Contract>> ListActiveAsync(ObjectId groupId, ObjectId? userId, CancellationToken cancellationToken)
+    {
+        string[] active = ["open", "in_progress", "voting"];
+        var items = _contracts.Values.Where(x => x.GroupId == groupId && active.Contains(x.Status)
+            && (userId == null || x.ChallengerId == userId || x.AcceptedBy == userId || x.TargetId == userId)).ToList();
+        return Task.FromResult<IReadOnlyList<Contract>>(items);
+    }
+
+    public async Task<Contract?> TryCancelActiveWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken)
+    {
+        var contract = await Mutate(id, x => x.Status is "open" or "in_progress" or "voting", x =>
+        {
+            x.Status = "cancelled";
+            x.ClosedReason = reason;
+            x.ResolvedBy = "system";
+            x.ResolvedAt = now;
+            x.UpdatedAt = now;
+        });
+
+        if (contract is { AcceptedBy: ObjectId acceptor, BondRequired: > 0 })
+        {
+            Credit(contract, acceptor, contract.BondRequired, "bond_release", now);
+        }
+
+        return contract;
+    }
+
     public Task<Contract?> TryUpdateOpenAsync(ObjectId id, int expectedVersion, string game, string condition, string reward, DateTime deadline, int bond, DateTime now, CancellationToken cancellationToken) =>
         Mutate(id, x => x.Status == "open" && x.Version == expectedVersion && x.AcceptedBy == null, x =>
         {
@@ -840,6 +935,22 @@ public sealed class InMemoryEvidenceRepository : IEvidenceRepository
 {
     private readonly ConcurrentDictionary<ObjectId, EvidenceEntity> _evidence = new();
 
+    public IReadOnlyList<EvidenceEntity> All() => _evidence.Values.ToList();
+
+    public Task<IReadOnlyList<EvidenceEntity>> ListPhotosByUserAsync(ObjectId userId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EvidenceEntity>>(_evidence.Values.Where(x => x.UserId == userId && x.Type == "photo" && x.Moderation.Status != "removed").ToList());
+
+    public Task<EvidenceEntity?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        Task.FromResult(_evidence.GetValueOrDefault(id));
+
+    public Task<EvidenceEntity?> MarkRemovedAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        if (!_evidence.TryGetValue(id, out var e) || e.Moderation.Status == "removed") return Task.FromResult<EvidenceEntity?>(null);
+        var before = new EvidenceEntity { Id = e.Id, ContractId = e.ContractId, UserId = e.UserId, Type = e.Type, ObjectKey = e.ObjectKey, Url = e.Url };
+        e.Moderation.Status = "removed"; e.Moderation.ModeratedAt = now; e.SavedInFame = false;
+        return Task.FromResult<EvidenceEntity?>(before);
+    }
+
     public Task CreateAsync(EvidenceEntity evidence, CancellationToken cancellationToken)
     {
         _evidence[evidence.Id] = evidence;
@@ -989,6 +1100,14 @@ public sealed class FakeObjectStorage : IObjectStorage
 
     public int PutCount => Volatile.Read(ref _putCount);
 
+    public bool Exists(string objectKey) => _objects.ContainsKey(objectKey);
+
+    public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
+    {
+        _objects.TryRemove(objectKey, out _);
+        return Task.CompletedTask;
+    }
+
     public Task<string> PutAsync(byte[] content, string contentType, string objectKey, CancellationToken cancellationToken)
     {
         _objects[objectKey] = content;
@@ -1003,6 +1122,9 @@ public sealed class FakeObjectStorage : IObjectStorage
 public sealed class InMemoryPointsLedgerRepository : IPointsLedgerRepository
 {
     public ConcurrentBag<PointsLedgerEntry> Entries { get; } = new();
+
+    public Task<PointsLedgerEntry?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        Task.FromResult(Entries.FirstOrDefault(x => x.Id == id));
 
     public Task<(IReadOnlyList<PointsLedgerEntry> Items, bool HasMore)> ListAsync(
         ObjectId groupId,
@@ -1027,6 +1149,22 @@ public sealed class InMemoryVoteRepository : IVoteRepository
 {
     private readonly ConcurrentDictionary<(ObjectId, ObjectId), Vote> _votes = new();
 
+    public Task<Vote?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        Task.FromResult(_votes.Values.FirstOrDefault(x => x.Id == id));
+
+    public Task ClearCommentsByJurorAsync(ObjectId jurorId, CancellationToken cancellationToken)
+    {
+        foreach (var v in _votes.Values.Where(x => x.JurorId == jurorId)) v.Comment = null;
+        return Task.CompletedTask;
+    }
+
+    public Task ClearCommentAsync(ObjectId id, CancellationToken cancellationToken)
+    {
+        var vote = _votes.Values.FirstOrDefault(x => x.Id == id);
+        if (vote is not null) vote.Comment = null;
+        return Task.CompletedTask;
+    }
+
     public Task CreateAsync(Vote vote, CancellationToken cancellationToken)
     {
         if (!_votes.TryAdd((vote.ContractId, vote.JurorId), vote))
@@ -1046,6 +1184,16 @@ public sealed class InMemoryCommitmentRepository : ICommitmentRepository
     private readonly ConcurrentDictionary<ObjectId, Commitment> _items = new();
 
     public void Add(Commitment commitment) => _items[commitment.Id] = commitment;
+
+    public Task CloseOpenForUserAsync(ObjectId userId, DateTime now, CancellationToken cancellationToken)
+    {
+        foreach (var c in _items.Values.Where(x => (x.Status == "pending" || x.Status == "completion_requested") && (x.DebtorId == userId || x.CreditorId == userId))) { c.Status = "cancelled"; c.UpdatedAt = now; }
+        return Task.CompletedTask;
+    }
+
+    public Task<int> CountOpenAsync(ObjectId groupId, ObjectId userId, bool asDebtor, CancellationToken cancellationToken) =>
+        Task.FromResult(_items.Values.Count(x => x.GroupId == groupId && (x.Status == "pending" || x.Status == "completion_requested")
+            && (asDebtor ? x.DebtorId == userId : x.CreditorId == userId)));
 
     public IReadOnlyList<Commitment> All => _items.Values.ToList();
 
@@ -1098,6 +1246,12 @@ public sealed class InMemoryCommitmentRepository : ICommitmentRepository
 
 public sealed class InMemoryNotificationRepository : INotificationRepository
 {
+    public Task DeleteAllForUserAsync(ObjectId userId, CancellationToken cancellationToken)
+    {
+        foreach (var n in _items.Values.Where(x => x.UserId == userId).ToList()) _items.TryRemove(n.Id, out _);
+        return Task.CompletedTask;
+    }
+
     private readonly ConcurrentDictionary<ObjectId, Notification> _items = new();
 
     public IReadOnlyList<Notification> For(ObjectId userId) => _items.Values.Where(x => x.UserId == userId).ToList();
@@ -1269,5 +1423,58 @@ public sealed class FakePushSender : Pactogg.Api.Infrastructure.Push.IPushSender
         }
 
         return Task.FromResult(new Pactogg.Api.Infrastructure.Push.PushResult(tokens.Count - invalid.Count, invalid));
+    }
+}
+
+public sealed class InMemoryReportRepository : Pactogg.Api.Modules.Reports.IReportRepository
+{
+    private readonly ConcurrentDictionary<ObjectId, Pactogg.Api.Modules.Reports.Report> _items = new();
+
+    public Task<bool> TryCreateAsync(Pactogg.Api.Modules.Reports.Report report, CancellationToken cancellationToken)
+    {
+        lock (_items)
+        {
+            if (_items.Values.Any(x => x.ReporterId == report.ReporterId && x.TargetType == report.TargetType && x.TargetId == report.TargetId)) return Task.FromResult(false);
+            _items[report.Id] = report;
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<Pactogg.Api.Modules.Reports.Report?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) => Task.FromResult(_items.GetValueOrDefault(id));
+
+    public Task<(IReadOnlyList<Pactogg.Api.Modules.Reports.Report> Items, bool HasMore)> ListByGroupAsync(ObjectId groupId, string? status, int limit, ObjectId? cursor, CancellationToken cancellationToken)
+    {
+        var q = _items.Values.Where(x => x.GroupId == groupId && (status == null || x.Status == status) && (cursor == null || x.Id < cursor)).OrderByDescending(x => x.Id).Take(limit + 1).ToList();
+        return Task.FromResult<(IReadOnlyList<Pactogg.Api.Modules.Reports.Report>, bool)>((q.Take(limit).ToList(), q.Count > limit));
+    }
+
+    public Task<Pactogg.Api.Modules.Reports.Report?> TryResolveAsync(ObjectId id, string status, ObjectId by, DateTime now, CancellationToken cancellationToken)
+    {
+        if (!_items.TryGetValue(id, out var r) || r.Status != "open") return Task.FromResult<Pactogg.Api.Modules.Reports.Report?>(null);
+        r.Status = status; r.ResolvedBy = by; r.ResolvedAt = now;
+        return Task.FromResult<Pactogg.Api.Modules.Reports.Report?>(r);
+    }
+
+    public Task ResolveSameTargetAsync(ObjectId groupId, string targetType, ObjectId targetId, string status, ObjectId by, DateTime now, CancellationToken cancellationToken)
+    {
+        foreach (var r in _items.Values.Where(x => x.GroupId == groupId && x.TargetType == targetType && x.TargetId == targetId && x.Status == "open")) { r.Status = status; r.ResolvedBy = by; r.ResolvedAt = now; }
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class InMemoryBlockRepository : Pactogg.Api.Modules.Reports.IBlockRepository
+{
+    private readonly ConcurrentDictionary<(ObjectId, ObjectId), Pactogg.Api.Modules.Reports.UserBlock> _items = new();
+
+    public Task<bool> TryBlockAsync(Pactogg.Api.Modules.Reports.UserBlock block, CancellationToken cancellationToken) => Task.FromResult(_items.TryAdd((block.BlockerId, block.BlockedId), block));
+
+    public Task<bool> UnblockAsync(ObjectId blockerId, ObjectId blockedId, CancellationToken cancellationToken) => Task.FromResult(_items.TryRemove((blockerId, blockedId), out _));
+
+    public Task<bool> IsBlockedAsync(ObjectId blockerId, ObjectId blockedId, CancellationToken cancellationToken) => Task.FromResult(_items.ContainsKey((blockerId, blockedId)));
+
+    public Task DeleteAllForUserAsync(ObjectId userId, CancellationToken cancellationToken)
+    {
+        foreach (var key in _items.Keys.Where(k => k.Item1 == userId || k.Item2 == userId).ToList()) _items.TryRemove(key, out _);
+        return Task.CompletedTask;
     }
 }

@@ -59,7 +59,7 @@ Rate limit de 10 intentos por minuto e IP. No revelar si el correo existe. No re
 
 - **AUTH01-D1:** bloqueo por correo + IP, no solo por correo.
 - **AUTH01-D2:** respuesta genérica para credenciales inválidas.
-- **AUTH01-D3:** el trabajo de hash no se iguala para correo inexistente; resistencia temporal es deuda (Q-020).
+- **AUTH01-D3:** con correo inexistente o cuenta solo de Google se verifica un hash Argon2id ficticio para igualar el trabajo (Q-020 resuelta, F2-D51). Prueba `SddDecisionTests.Q020_LoginWithUnknownEmail_DoesTheSameHashWorkAsAWrongPassword`.
 
 ## 6. Criterios de aceptación
 

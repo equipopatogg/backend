@@ -232,7 +232,8 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddCheck<Pactogg.Api.Infrastructure.Mongo.MongoHealthCheck>(Pactogg.Api.Infrastructure.Mongo.MongoHealthCheck.Name, tags: ["ready"]);
 
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddHostedService<MongoIndexInitializer>();
@@ -297,12 +298,16 @@ builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<EvidenceService>();
 builder.Services.AddScoped<TournamentService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Users.AccountDeletionService>();
 builder.Services.AddScoped<GroupAccess>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<PointsService>();
 builder.Services.AddScoped<CommitmentService>();
 builder.Services.AddScoped<FameService>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Reports.ReportService>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Reports.IReportRepository, MongoReportRepository>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Reports.IBlockRepository, MongoBlockRepository>();
 builder.Services.AddScoped<ContractLifecycleService>();
 builder.Services.AddHostedService<ContractDeadlineWorker>();
 
@@ -343,12 +348,21 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.8.0",
+    version = "0.9.0",
     status = "ok"
 })).AllowAnonymous();
 
-app.MapHealthChecks("/health").AllowAnonymous();
+// F2-D54: /health es vida del proceso (lo usa Caddy); /health/ready agrega la base de datos (CLARIFICACION #136).
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => !check.Tags.Contains("ready")
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => true
+}).AllowAnonymous();
 app.MapAuthEndpoints();
+Pactogg.Api.Modules.Reports.ReportEndpoints.MapReportEndpoints(app);
 app.MapUserEndpoints();
 app.MapGroupEndpoints();
 app.MapContractEndpoints();

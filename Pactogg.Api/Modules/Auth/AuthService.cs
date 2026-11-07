@@ -26,6 +26,8 @@ public sealed class AuthService
     private readonly JwtOptions _jwtOptions;
     private readonly IGoogleTokenValidator _google;
     private readonly AccountService _account;
+    private readonly Pactogg.Api.Modules.Devices.IDeviceRepository _devices;
+    private static string? s_dummyHash;
 
     public AuthService(
         IUserRepository users,
@@ -38,9 +40,11 @@ public sealed class AuthService
         IOptions<AuthOptions> authOptions,
         IOptions<JwtOptions> jwtOptions,
         IGoogleTokenValidator google,
-        AccountService account)
+        AccountService account,
+        Pactogg.Api.Modules.Devices.IDeviceRepository devices)
     {
         _account = account;
+        _devices = devices;
         _google = google;
         _users = users;
         _refreshTokens = refreshTokens;
@@ -118,7 +122,10 @@ public sealed class AuthService
         }
 
         var user = await _users.GetByEmailAsync(email, cancellationToken);
-        if (user is null || !_passwordHasher.Verify(user.PasswordHash, request.Password))
+        // Q-020: sin cuenta (o cuenta solo de Google) se hace el mismo trabajo de Argon2id para no revelar por tiempo qué correos existen.
+        var hashToCheck = string.IsNullOrEmpty(user?.PasswordHash) ? (s_dummyHash ??= _passwordHasher.Hash("pactogg-timing-equalizer")) : user!.PasswordHash;
+        var passwordOk = _passwordHasher.Verify(hashToCheck, request.Password);
+        if (user is null || string.IsNullOrEmpty(user.PasswordHash) || !passwordOk)
         {
             await _loginAttempts.RecordFailureAsync(attemptKey, TimeSpan.FromMinutes(_authOptions.LockoutMinutes), cancellationToken);
             throw ApiException.Unauthorized(ErrorCodes.InvalidCredentials, "Correo o contraseña incorrectos.");
@@ -224,6 +231,7 @@ public sealed class AuthService
             // CLARIFICACION #10: un refresh ya rotado que vuelve a llegar se considera robado.
             // Se revocan todas las sesiones del usuario y debe iniciar sesión de nuevo.
             await _refreshTokens.RevokeAllForUserAsync(stored.UserId, DateTime.UtcNow, cancellationToken);
+            await _devices.DeleteAsync(stored.UserId, null, cancellationToken);
             await _audit.AppendAsync("auth.refresh_reuse_detected", stored.UserId, "refresh_token", stored.Id, null, new { user_id = stored.UserId.ToString() }, cancellationToken);
             throw ApiException.Unauthorized();
         }
@@ -261,7 +269,9 @@ public sealed class AuthService
         var now = DateTime.UtcNow;
         if (request?.All == true)
         {
+            // 006-R3 / CLARIFICACION #120: cerrar sesión en todos lados también quita todos los dispositivos de push.
             await _refreshTokens.RevokeAllForUserAsync(userId, now, cancellationToken);
+            await _devices.DeleteAsync(userId, null, cancellationToken);
         }
         else if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
         {

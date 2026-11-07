@@ -66,6 +66,7 @@ public sealed class DeviceResponse
 /// <summary>DEV-01..03: dispositivos para push y preferencias de avisos.</summary>
 public sealed class DeviceService
 {
+    public const int MaxDevicesPerUser = 5;
     private readonly IDeviceRepository _devices;
     private readonly IAuditService _audit;
 
@@ -78,6 +79,19 @@ public sealed class DeviceService
     public async Task<DeviceResponse> RegisterAsync(ObjectId userId, RegisterDeviceRequest request, CancellationToken cancellationToken)
     {
         var device = await _devices.UpsertAsync(userId, request.FcmToken.Trim(), request.Platform, request.AppVersion?.Trim(), DateTime.UtcNow, cancellationToken);
+
+        // 006-R2 / CLARIFICACION #121: hasta 5 dispositivos por cuenta; al registrar el sexto se quita el que lleva más tiempo sin usarse (006-D1).
+        var mine = await _devices.ListByUsersAsync([userId], cancellationToken);
+        if (mine.Count > MaxDevicesPerUser)
+        {
+            var stale = mine.Where(x => x.Id != device.Id)
+                .OrderBy(x => x.UpdatedAt)
+                .Take(mine.Count - MaxDevicesPerUser)
+                .Select(x => x.FcmToken)
+                .ToList();
+            await _devices.DeleteTokensAsync(stale, cancellationToken);
+        }
+
         await _audit.AppendAsync("device.registered", userId, "device", device.Id, null, new { platform = device.Platform }, cancellationToken);
         return new DeviceResponse
         {
