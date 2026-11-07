@@ -84,6 +84,19 @@ Aws__CdnBaseUrl=${cdn_base_url}
 Cors__AllowedOrigins__${index}=${origin}
 %{ endfor ~}
 ENVFILE
+
+# Opcionales (F2-D59): correo, Firebase y verificación obligatoria. Viven en SSM y se crean con
+# scripts/configure-email.sh; si un parámetro no existe, su línea no se escribe y la API sigue igual.
+get_optional() {
+  aws ssm get-parameter --region "$REGION" --name "$PARAM_PREFIX/$1" \
+    --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true
+}
+for name in Email__SmtpHost Email__SmtpPort Email__SmtpUser Email__SmtpPassword Email__FromAddress Firebase__ProjectId Firebase__ServiceAccountJson Auth__RequireVerifiedEmail; do
+  value="$(get_optional "$name")"
+  if [ -n "$value" ] && [ "$value" != "None" ]; then
+    printf '%s=%s\n' "$name" "$value" >> /opt/pactogg/api.env
+  fi
+done
 chmod 600 /opt/pactogg/api.env
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -153,7 +166,7 @@ ${public_host} {
 	reverse_proxy 127.0.0.1:8080 ${worker_private_ip}:8080 {
 		lb_policy round_robin
 		lb_try_duration 5s
-		health_uri /health
+		health_uri /health/ready
 		health_interval 15s
 		health_timeout 5s
 		fail_duration 30s
