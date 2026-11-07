@@ -58,3 +58,5 @@ Claude outputs/
 
 # Estado remoto de Terraform (bucket por cuenta)
 deploy/terraform/backend.hcl
+# El módulo de reportes (REP-01..06) es código, no un reporte de pruebas.
+!Pactogg.Api/Modules/Reports/
