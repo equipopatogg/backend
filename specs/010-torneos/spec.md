@@ -1,6 +1,6 @@
 # 010 — Torneos entre grupos
 
-**Fecha:** 2026-11-07 · **Estado:** Escrita; por aprobar (PO) · **Sprint:** 4 (fila 102)
+**Fecha:** 2026-11-07 · **Estado:** Aprobada; por implementar · **Sprint:** 4 (fila 102)
 **Historias:** torneos exprés entre grupos, inscripción en puntos, bracket con byes, reporte de resultados (ID 115), bolsa al campeón.
 **Endpoints del CRUD:** TOR-01..09 y MAT-01..07 (TOR-02 hecho; los demás por hacer).
 **Fuentes:** constitución §6.7 y §7.1; CLARIFICACION #1, #3, #96–#107, #116; Descripción del Backend 7.8; CRUD hojas Torneos y Partidas; D-20.
@@ -62,7 +62,7 @@ TOR-01..09, MAT-01..07 (rutas en la lista de endpoints). Esquemas: `CreateTourna
 | 010-AC7 | R4, R16 | Cancelar → todos recuperan su inscripción (movimientos compensatorios) |
 | 010-AC8 | R2, R9, R15 | Ajeno al torneo → 403; siguiente partida correcta para un miembro |
 
-## 7. Decisiones (por aprobar)
+## 7. Decisiones (aprobadas por el PO el 2026-11-07)
 
 - **010-D1:** el grupo del organizador queda inscrito al crear y paga como cualquier otro (CLARIFICACION #97: "lo crea y lo inscribe").
 - **010-D2:** la inscripción la paga el administrador que inscribe, de su saldo en su grupo (los grupos no tienen saldo propio, §6.6); el premio va a los representantes que jugaron por el campeón (CLARIFICACION #106).
@@ -81,7 +81,7 @@ Ninguna.
 
 | Rol | Persona | Fecha | Resultado |
 |---|---|---|---|
-| Product Owner | David M. | — | Por aprobar |
+| Product Owner | David M. | 2026-11-07 | Aprobada |
 | Revisión técnica | Kevin H. | — | Pendiente |
 | Comprobabilidad | José G. | — | Pendiente |
 

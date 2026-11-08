@@ -4,6 +4,6 @@
 - [x] Criterio de aceptación por requisito.
 - [x] Cero preguntas abiertas que bloqueen (las que hay quedan fuera de alcance o con dueño y fecha).
 - [x] Verificación contra la constitución.
-- [ ] Aprobación del Product Owner (y de sus decisiones D-n).
+- [x] Aprobación del Product Owner y de sus decisiones (2026-11-07).
 - [ ] Revisión técnica (Kevin) y comprobabilidad (José).
 - [ ] Tareas pendientes implementadas y criterios en verde.

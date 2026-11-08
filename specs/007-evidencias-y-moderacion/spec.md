@@ -1,6 +1,6 @@
 # 007 — Evidencias y moderación
 
-**Fecha:** 2026-11-07 · **Estado:** Escrita; por aprobar (PO) · **Sprint:** 4 (fila 99)
+**Fecha:** 2026-11-07 · **Estado:** Aprobada; por implementar · **Sprint:** 4 (fila 99)
 **Historias:** evidencias con foto o enlace, moderación antes de almacenar, Muro de la Fama, reportes y bloqueos (ID 149, ID 153).
 **Endpoints del CRUD:** EVI-02, EVI-03 (hechos), EVI-04, EVI-05, EVI-06 (por hacer); REP-01..06 (hechos, [expediente](../REP-01-06-reports-blocks/spec.md)); EVI-01 no aplica (D-17).
 **Fuentes:** constitución §3.8, §3.9, §6.4; CLARIFICACION #51–#70; Descripción del Backend 7.5 y 7.11; CRUD hojas Evidencias y Reportes; decisiones D-17, D-18, F2-D20.
@@ -54,7 +54,7 @@ EVI-02 `POST /contracts/{id}/evidence` (multipart `file` o JSON `{type:"link", u
 | 007-AC8 | R10 | Regla de 30 días en el bucket excluye las fotos de la Fama | Por hacer (007-T6) |
 | 007-AC9 | R11 | Una grosería en español en la condición → 422 sin llamar a Comprehend | Por hacer (007-T7) |
 
-## 7. Decisiones (por aprobar)
+## 7. Decisiones (aprobadas por el PO el 2026-11-07)
 
 - **007-D1:** la foto rechazada se descarta de inmediato, sin cuarentena de 24 h: la cuarentena solo sirve si existe quien revise los falsos positivos y en esta versión no hay administrador de la plataforma. El autor puede subir otra.
 - **007-D2:** borrar la única evidencia regresa el reto a `in_progress` (antes de votos no hay resultado que proteger).
@@ -72,7 +72,7 @@ Q-012 (oEmbed) queda fuera de alcance; no hay otras.
 
 | Rol | Persona | Fecha | Resultado |
 |---|---|---|---|
-| Product Owner | David M. | — | Por aprobar |
+| Product Owner | David M. | 2026-11-07 | Aprobada |
 | Revisión técnica | Kevin H. | — | Pendiente |
 | Comprobabilidad | José G. | — | Pendiente |
 

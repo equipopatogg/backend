@@ -1,6 +1,6 @@
 # 008 — Jurado, puntos y resultados
 
-**Fecha:** 2026-11-07 · **Estado:** Escrita; por aprobar (PO) · **Sprint:** 4 (fila 100)
+**Fecha:** 2026-11-07 · **Estado:** Aprobada; por implementar · **Sprint:** 4 (fila 100)
 **Historias:** jurado aleatorio, votación y resultado, libro de puntos y fianzas, ranking y Rey del Grupo, Muro de la Fama y de la Vergüenza, logros, Índice de Palabra (ID 25).
 **Endpoints del CRUD:** VOT-01..05, PTS-01..03, ACH-01, ACH-03 (hechos); ACH-02, ACH-04 (por hacer); PTS-04/05 internos; ACH-05/06 fuera de alcance.
 **Fuentes:** constitución §6.5, §6.6, §6.8; CLARIFICACION #71–#95, #108–#115; Descripción del Backend 7.6, 7.7, 7.9; CRUD hojas Votos, Puntos y Logros; F2-D40–F2-D44.
@@ -54,7 +54,7 @@ VOT-01..05, PTS-01..03, ACH-01..04 (rutas en la lista de endpoints). Esquemas: `
 | 008-AC8 | R10, R11 | Por hacer (008-T3): primer reto cumplido → insignia una sola vez; ajeno → 404 |
 | 008-AC9 | R12 | Por hacer (008-T1): unitarias del cálculo (límites 0 y 100) e integración tras cerrar un reto |
 
-## 7. Decisiones (por aprobar)
+## 7. Decisiones (aprobadas por el PO el 2026-11-07)
 
 - **008-D1 — catálogo v1 de logros** (solo los ejemplos de CLARIFICACION #115 y los tipos del CRUD): insignia `primer_reto` (primer reto cumplido), rachas `racha_3`, `racha_5` y `racha_10` (retos cumplidos seguidos), trofeo `campeon_torneo` (grupo campeón; a cada miembro que jugó). Más logros se agregan por enmienda de esta spec.
 - **008-D2:** el Índice usa la fórmula propuesta de la constitución §6.8 mientras el equipo no ratifique otra.
@@ -71,7 +71,7 @@ Ninguna.
 
 | Rol | Persona | Fecha | Resultado |
 |---|---|---|---|
-| Product Owner | David M. | — | Por aprobar |
+| Product Owner | David M. | 2026-11-07 | Aprobada |
 | Revisión técnica | Kevin H. | — | Pendiente |
 | Comprobabilidad | José G. | — | Pendiente |
 
