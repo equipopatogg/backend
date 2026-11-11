@@ -83,6 +83,33 @@ public sealed class S3ObjectStorage : IObjectStorage
         }
     }
 
+    public async Task CopyAsync(string sourceKey, string destinationKey, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BucketName))
+        {
+            throw ApiException.ServiceUnavailable(ErrorCodes.StorageUnavailable, "Almacenamiento no configurado.");
+        }
+
+        try
+        {
+            await _s3.CopyObjectAsync(new CopyObjectRequest
+            {
+                SourceBucket = _options.BucketName,
+                SourceKey = sourceKey,
+                DestinationBucket = _options.BucketName,
+                DestinationKey = destinationKey
+            }, cancellationToken);
+        }
+        catch (AmazonS3Exception)
+        {
+            throw ApiException.ServiceUnavailable(ErrorCodes.StorageUnavailable, "No se pudo guardar la foto en el Muro de la Fama.");
+        }
+        catch (AmazonClientException)
+        {
+            throw ApiException.ServiceUnavailable(ErrorCodes.StorageUnavailable, "No se pudo guardar la foto en el Muro de la Fama.");
+        }
+    }
+
     public async Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(objectKey) || string.IsNullOrWhiteSpace(_options.BucketName))

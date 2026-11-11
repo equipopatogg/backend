@@ -1,6 +1,6 @@
 # 007 — Evidencias y moderación
 
-**Fecha:** 2026-11-07 · **Estado:** Aprobada; por implementar · **Sprint:** 4 (fila 99)
+**Fecha:** 2026-11-07 · **Estado:** Aprobada e implementada (v0.10.0, 2026-11-10) · **Sprint:** 4 (fila 99)
 **Historias:** evidencias con foto o enlace, moderación antes de almacenar, Muro de la Fama, reportes y bloqueos (ID 149, ID 153).
 **Endpoints del CRUD:** EVI-02, EVI-03 (hechos), EVI-04, EVI-05, EVI-06 (por hacer); REP-01..06 (hechos, [expediente](../REP-01-06-reports-blocks/spec.md)); EVI-01 no aplica (D-17).
 **Fuentes:** constitución §3.8, §3.9, §6.4; CLARIFICACION #51–#70; Descripción del Backend 7.5 y 7.11; CRUD hojas Evidencias y Reportes; decisiones D-17, D-18, F2-D20.
@@ -48,11 +48,11 @@ EVI-02 `POST /contracts/{id}/evidence` (multipart `file` o JSON `{type:"link", u
 | 007-AC2 | R2, R3 | Foto marcada → 422 sin objeto en S3; moderador caído → 503 | `UnitTest/ImageModerationPolicyTests`, `FakeObjectStorage` |
 | 007-AC3 | R1 | SVG, archivo de 6 MB o extensión falsa → 422; EXIF eliminado | `UnitTest/ImageProcessorTests` |
 | 007-AC4 | R6 | Evidencia quitada no aparece en EVI-03 | `ReportsAndBlocksTests` |
-| 007-AC5 | R7 | Reemplazo sin votos → 200 y objeto viejo borrado; con un voto → 409 | Por hacer (007-T3) |
-| 007-AC6 | R8 | Borrar la única evidencia → reto a `in_progress`; ajeno → 403 | Por hacer (007-T4) |
-| 007-AC7 | R9 | Guardar en la Fama dos veces → 200 ambas; foto de reto no cumplido → 409 | Por hacer (007-T5) |
-| 007-AC8 | R10 | Regla de 30 días en el bucket excluye las fotos de la Fama | Por hacer (007-T6) |
-| 007-AC9 | R11 | Una grosería en español en la condición → 422 sin llamar a Comprehend | Por hacer (007-T7) |
+| 007-AC5 | R7 | Reemplazo sin votos → 200 y objeto viejo borrado; con un voto → 409 | `Spec007EvidenceTests.AC5_ReplaceBeforeVotes_SwapsPhotoAndDeletesOld_AfterAVote_Returns409` |
+| 007-AC6 | R8 | Borrar la única evidencia → reto a `in_progress`; ajeno → 403 | `Spec007EvidenceTests.AC6_DeleteOnlyEvidence_ReturnsContractToInProgress_OthersForbidden_AfterVote409` |
+| 007-AC7 | R9 | Guardar en la Fama dos veces → 200 ambas; foto de reto no cumplido → 409 | `Spec007EvidenceTests.AC7_SaveInFame_OnlyFulfilled_IsIdempotent_AndMovesPhotoOutOfThe30DayRule` |
+| 007-AC8 | R10 | Regla de 30 días en el bucket excluye las fotos de la Fama | `Spec007EvidenceTests.AC8_PhotosOlderThan30Days_AreDeleted_ExceptTheOnesInTheFame` y regla `aws_s3_bucket_lifecycle_configuration` en `deploy/terraform/storage.tf` |
+| 007-AC9 | R11 | Una grosería en español en la condición → 422 sin llamar a Comprehend | `Spec007EvidenceTests.AC9_SpanishTerm_IsRejectedBeforeComprehend` |
 
 ## 7. Decisiones (aprobadas por el PO el 2026-11-07)
 

@@ -7,6 +7,7 @@ using Pactogg.Api.Modules.Contracts.Abstractions;
 using Pactogg.Api.Modules.Contracts.Domain;
 using Pactogg.Api.Modules.Groups.Abstractions;
 using Pactogg.Api.Modules.Notifications;
+using Pactogg.Api.Modules.Reputation;
 
 namespace Pactogg.Api.Modules.Contracts.Lifecycle;
 
@@ -24,6 +25,7 @@ public sealed class ContractLifecycleService
     private readonly IAuditService _audit;
     private readonly ICacheService _cache;
     private readonly ContractLifecycleOptions _options;
+    private readonly ReputationService _reputation;
 
     public ContractLifecycleService(
         IContractRepository contracts,
@@ -32,8 +34,10 @@ public sealed class ContractLifecycleService
         NotificationService notifications,
         IAuditService audit,
         ICacheService cache,
-        IOptions<ContractLifecycleOptions> options)
+        IOptions<ContractLifecycleOptions> options,
+        ReputationService reputation)
     {
+        _reputation = reputation;
         _contracts = contracts;
         _groups = groups;
         _members = members;
@@ -217,6 +221,7 @@ public sealed class ContractLifecycleService
         }
 
         var fulfilled = outcome == "fulfilled";
+        await _reputation.OnContractResolvedAsync(resolved, resolvedBy, cancellationToken);
         await _audit.AppendAsync(
             "contract.resolved",
             actor,
@@ -243,6 +248,8 @@ public sealed class ContractLifecycleService
         {
             return;
         }
+
+        await _reputation.OnContractExpiredAsync(expired, cancellationToken);
 
         await AfterCloseAsync(
             expired,

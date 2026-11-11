@@ -257,7 +257,8 @@ public sealed class GroupService
                         AvatarId = user?.AvatarId ?? "default",
                         Role = member.Role,
                         PointsBalance = member.PointsBalance,
-                        JoinedAt = member.JoinedAt
+                        JoinedAt = member.JoinedAt,
+                        UpdatedAt = member.UpdatedAt == default ? member.JoinedAt : member.UpdatedAt
                     };
                 }).ToList();
                 var next = hasMore && items.Count > 0 ? items[^1].Id.ToString() : null;
@@ -518,7 +519,8 @@ public sealed class GroupService
         AvatarId = user?.AvatarId ?? "default",
         Role = member.Role,
         PointsBalance = member.PointsBalance,
-        JoinedAt = member.JoinedAt
+        JoinedAt = member.JoinedAt,
+        UpdatedAt = member.UpdatedAt == default ? member.JoinedAt : member.UpdatedAt
     };
 
     private static GroupResponse ToResponse(Group group, string myRole, int myPoints) => new()

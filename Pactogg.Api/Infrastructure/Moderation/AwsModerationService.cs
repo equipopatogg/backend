@@ -14,6 +14,7 @@ public sealed class AwsModerationService : IModerationService
     private readonly IAmazonRekognition _rekognition;
     private readonly IAmazonComprehend _comprehend;
     private readonly ImageModerationOptions _imagePolicy;
+    private readonly BlockedTermsMatcher _blockedTerms;
 
     public AwsModerationService(
         IAmazonRekognition rekognition,
@@ -23,6 +24,7 @@ public sealed class AwsModerationService : IModerationService
         _rekognition = rekognition;
         _comprehend = comprehend;
         _imagePolicy = moderationOptions.Value.Image;
+        _blockedTerms = new BlockedTermsMatcher(moderationOptions.Value.BlockedTerms);
     }
 
     public async Task<ModerationResult> ModerateImageAsync(byte[] image, CancellationToken cancellationToken)
@@ -58,6 +60,12 @@ public sealed class AwsModerationService : IModerationService
 
     public async Task<ModerationResult> ModerateTextAsync(string text, CancellationToken cancellationToken)
     {
+        // 007-D3: primero la lista local en español; si coincide no se llama a Comprehend.
+        if (_blockedTerms.Find(text).Count > 0)
+        {
+            return ModerationResult.Reject("BLOCKED_TERM");
+        }
+
         try
         {
             var response = await _comprehend.DetectToxicContentAsync(new DetectToxicContentRequest

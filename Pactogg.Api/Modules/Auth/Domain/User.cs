@@ -77,6 +77,30 @@ public sealed class UserStats
 
     [BsonElement("word_index")]
     public int WordIndex { get; set; } = 50;
+
+    // Contadores del Índice de Palabra (spec 008-R12). El índice se recalcula solo desde estos números.
+
+    /// <summary>Retos aceptados que vencieron sin evidencia.</summary>
+    [BsonElement("expired")]
+    public int Expired { get; set; }
+
+    /// <summary>Compromisos que la persona cumplió dentro de los 7 días.</summary>
+    [BsonElement("commitments_on_time")]
+    public int CommitmentsOnTime { get; set; }
+
+    /// <summary>Compromisos que la persona dejó pendientes más de 7 días.</summary>
+    [BsonElement("commitments_overdue")]
+    public int CommitmentsOverdue { get; set; }
+
+    /// <summary>Votos como jurado que coincidieron con la decisión del jurado.</summary>
+    [BsonElement("aligned_votes")]
+    public int AlignedVotes { get; set; }
+}
+
+/// <summary>Cambios a los contadores del Índice de Palabra.</summary>
+public sealed record StatsDelta(int Expired = 0, int CommitmentsOnTime = 0, int CommitmentsOverdue = 0, int AlignedVotes = 0)
+{
+    public static readonly StatsDelta None = new();
 }
 
 [BsonIgnoreExtraElements]

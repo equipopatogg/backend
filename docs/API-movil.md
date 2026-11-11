@@ -97,7 +97,7 @@ curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
 
 ## 6. Lo que todavía NO existe
 
-Muro de la Vergüenza, crear torneos y partidas, contrato por voz con IA (falta la clave del modelo), reportes y bloqueos, eliminar cuenta e Índice de Palabra calculado (hoy vale 50 para todos). El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor; el correo igual, hasta configurar SES. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
+Crear torneos y partidas (TOR-01, TOR-03..09, MAT-01..07) y contrato por voz con IA (CON-08, falta la clave del modelo). El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
 
 ## 7. Reglas que la app debe respetar
 
@@ -140,3 +140,21 @@ Muro de la Vergüenza, crear torneos y partidas, contrato por voz con IA (falta 
 - **Detalles:** `GET /points/movements/{id}`, `GET /commitments/{id}`, `GET /groups/{gid}/commitments/summary` → `{ debo, me_deben }`, `GET /groups/{gid}/ranking` → `{ king, items }` (`king` no viene si hay empate).
 - Avisos nuevos: `group_role_changed`, `group_member_removed`, `group_owner_transferred`.
 
+## Cambios 0.10.0 (2026-11-10)
+
+- **Evidencias (spec 007):**
+  - `PUT /contracts/{id}/evidence/{eid}` reemplaza tu evidencia (mismo cuerpo que EVI-02) mientras no haya votos → `200`.
+  - `DELETE /evidence/{eid}` la borra → `204`. Si era la única, el reto vuelve a `in_progress` y desaparece de los votos pendientes del jurado.
+  - Con al menos un voto, las dos dan `409 VOTING_STARTED`. Si no eres el autor, `403 NOT_EVIDENCE_OWNER`.
+- **Muro de la Fama:** `POST /evidence/{eid}/save-fame` guarda una foto de un reto cumplido → `200` con `saved_in_fame: true`. Se puede repetir sin error. Si el reto no está cumplido, `409`; si es un enlace, `422`. Las fotos que no se guardan se borran a los 30 días (dejan de salir en `GET /contracts/{id}/evidence` y en la Fama). Muestra la fecha con `expires_at`, que no viene en fotos guardadas ni en enlaces.
+- **Muro de la Vergüenza:** `GET /groups/{gid}/shame?limit&cursor` lista retos con trampa (`cheating`) o vencidos (`expired`), con `label` (texto corto para la tarjeta), `executor`, `game`, `condition` y `closed_at`. No trae fotos ni comentarios.
+- **Logros:** `GET /users/{id}/achievements` devuelve `[{ type: badge|streak|trophy, code, name, description, earned_at, … }]`. Por ahora: `primer_reto`, `racha_3`, `racha_5`, `racha_10` y `campeon_torneo` (este último llega con torneos). Si no comparten grupo, `404`.
+- **Índice de Palabra:** `stats.word_index` ya se calcula y deja de valer 50 para todos.
+  - Suma: +4 por reto cumplido, +2 por compromiso cumplido en 7 días y +1 por voto que coincide con el jurado (máximo +10).
+  - Resta: −12 por trampa, −5 por reto aceptado que venció y −4 por compromiso con más de 7 días pendiente.
+  - Siempre queda entre 0 y 100.
+  - Refresquen el perfil después de votar o de confirmar un compromiso.
+- **Aviso nuevo:** `commitment_overdue` se manda al deudor una sola vez cuando un compromiso lleva más de 7 días pendiente. Abre el compromiso con `data.commitment_id`.
+- **Borradores sin conexión:** `POST /groups/{gid}/contracts` y `POST /contracts/{id}/evidence` (solo enlace) aceptan un `Idempotency-Key` **opcional**. Guarden la clave con el borrador y reenvíen con la misma: el reintento devuelve el mismo reto (`Idempotent-Replayed: true`) en lugar de crear otro.
+- **`updated_at`** ahora viene también en miembros (`GET /groups/{id}/members`), compromisos y `GET /users/me`. Úsenlo para saber si su copia local está vieja: siempre gana el servidor.
+- **Moderación en español:** condición, recompensa, juego, nombre de grupo, apodo y comentarios con groserías comunes en español dan `422 CONTENT_REJECTED`. La lista está en el servidor.

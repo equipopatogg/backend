@@ -29,6 +29,52 @@ resource "aws_s3_bucket_versioning" "evidence" {
   }
 }
 
+# Spec 007-R10 (CLARIFICACION #53): las fotos de evidencias se borran a los 30 días.
+# Las fotos guardadas en el Muro de la Fama se copian a fame/ (EVI-06) y quedan fuera de esta regla.
+# Con el versionado activo, las versiones anteriores y las marcas de borrado se eliminan al día siguiente
+# para que una foto borrada no se quede guardada como versión antigua.
+resource "aws_s3_bucket_lifecycle_configuration" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+
+  rule {
+    id     = "evidencias-30-dias"
+    status = "Enabled"
+
+    filter {
+      prefix = "evidence/"
+    }
+
+    expiration {
+      days = 30
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+
+  rule {
+    id     = "limpiar-versiones-borradas"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+
+    expiration {
+      expired_object_delete_marker = true
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.evidence]
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "evidence" {
   bucket = aws_s3_bucket.evidence.id
 

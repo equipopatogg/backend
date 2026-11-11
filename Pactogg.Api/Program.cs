@@ -308,7 +308,10 @@ builder.Services.AddScoped<FameService>();
 builder.Services.AddScoped<Pactogg.Api.Modules.Reports.ReportService>();
 builder.Services.AddScoped<Pactogg.Api.Modules.Reports.IReportRepository, MongoReportRepository>();
 builder.Services.AddScoped<Pactogg.Api.Modules.Reports.IBlockRepository, MongoBlockRepository>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Reputation.IAchievementRepository, MongoAchievementRepository>();
 builder.Services.AddScoped<ContractLifecycleService>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Reputation.ReputationService>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Maintenance.MaintenanceService>();
 builder.Services.AddHostedService<ContractDeadlineWorker>();
 
 var app = builder.Build();
@@ -348,7 +351,7 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.9.0",
+    version = "0.10.0",
     status = "ok"
 })).AllowAnonymous();
 
@@ -375,6 +378,7 @@ app.MapNotificationEndpoints();
 app.MapDeviceEndpoints();
 app.MapAuditEndpoints();
 app.MapFameEndpoints();
+Pactogg.Api.Modules.Reputation.ReputationEndpoints.MapReputationEndpoints(app);
 
 app.Run();
 

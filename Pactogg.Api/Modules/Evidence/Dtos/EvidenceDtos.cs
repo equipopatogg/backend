@@ -11,6 +11,9 @@ public sealed class CreateLinkEvidenceRequest
     public string Url { get; set; } = string.Empty;
 }
 
+/// <summary>Cuerpo de EVI-02/EVI-04: una foto (multipart) o un enlace (JSON).</summary>
+public sealed record EvidenceUpload(byte[]? Content, string? ContentType, CreateLinkEvidenceRequest? Link);
+
 public sealed class ModerationResponse
 {
     public string Status { get; init; } = "pending";
@@ -28,6 +31,7 @@ public sealed class EvidenceResponse
     public string? Provider { get; init; }
     public string? ObjectKey { get; init; }
     public ModerationResponse Moderation { get; init; } = new();
+    public bool SavedInFame { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime? ExpiresAt { get; init; }
 }

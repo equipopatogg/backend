@@ -138,6 +138,54 @@ public sealed class MongoUserRepository : IUserRepository
         }
     }
 
+    public async Task<UserStats?> ApplyStatsAsync(ObjectId id, StatsDelta delta, DateTime now, CancellationToken cancellationToken)
+    {
+        // Los contadores se suman de forma atómica; el índice se escribe solo si los contadores siguen iguales
+        // a los que se usaron para calcularlo, así una escritura vieja nunca pisa a una más nueva.
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var update = Builders<User>.Update.Set(x => x.UpdatedAt, now);
+            if (attempt == 0)
+            {
+                update = update
+                    .Inc(x => x.Stats.Expired, delta.Expired)
+                    .Inc(x => x.Stats.CommitmentsOnTime, delta.CommitmentsOnTime)
+                    .Inc(x => x.Stats.CommitmentsOverdue, delta.CommitmentsOverdue)
+                    .Inc(x => x.Stats.AlignedVotes, delta.AlignedVotes);
+            }
+
+            var user = await _context.Users.FindOneAndUpdateAsync(
+                x => x.Id == id,
+                update,
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+            if (user is null)
+            {
+                return null;
+            }
+
+            var s = user.Stats;
+            var index = Modules.Reputation.WordIndexCalculator.Compute(s);
+            var result = await _context.Users.UpdateOneAsync(
+                x => x.Id == id
+                    && x.Stats.Completed == s.Completed
+                    && x.Stats.Cheated == s.Cheated
+                    && x.Stats.Expired == s.Expired
+                    && x.Stats.CommitmentsOnTime == s.CommitmentsOnTime
+                    && x.Stats.CommitmentsOverdue == s.CommitmentsOverdue
+                    && x.Stats.AlignedVotes == s.AlignedVotes,
+                Builders<User>.Update.Set(x => x.Stats.WordIndex, index),
+                cancellationToken: cancellationToken);
+            if (result.MatchedCount > 0)
+            {
+                s.WordIndex = index;
+                return s;
+            }
+        }
+
+        return (await GetByIdAsync(id, cancellationToken))?.Stats;
+    }
+
     public Task AnonymizeAsync(ObjectId id, DateTime now, CancellationToken cancellationToken) =>
         _context.Users.UpdateOneAsync(
             x => x.Id == id,

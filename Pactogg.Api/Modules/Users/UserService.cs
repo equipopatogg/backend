@@ -193,7 +193,8 @@ public sealed partial class UserService
         Stats = ToStats(user.Stats),
         GroupsCount = groupsCount,
         NotificationPreferences = NotificationPreferencesDto.From(user.NotificationPreferences),
-        CreatedAt = user.CreatedAt
+        CreatedAt = user.CreatedAt,
+        UpdatedAt = user.UpdatedAt == default ? user.CreatedAt : user.UpdatedAt
     };
 
     private static UserStatsResponse ToStats(UserStats stats) => new()

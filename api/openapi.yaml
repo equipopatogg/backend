@@ -22,6 +22,7 @@ tags:
   - name: Fame
   - name: Devices
   - name: Audit
+  - name: Achievements
 paths:
   /health:
     get:
@@ -634,6 +635,8 @@ paths:
       description: El grupo necesita al menos 3 miembros (CLARIFICACION #22 y #75); si no, 409 GROUP_TOO_SMALL.
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OptionalIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -707,6 +710,7 @@ paths:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/OptionalIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -900,6 +904,7 @@ paths:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ContractId'
+        - $ref: '#/components/parameters/OptionalIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -934,6 +939,155 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/contracts/{id}/evidence/{eid}:
+    put:
+      tags: [Evidence]
+      operationId: replaceEvidence
+      summary: Reemplazar evidencia antes del primer voto (EVI-04)
+      description: >-
+        Solo el autor y solo mientras el reto no tenga votos (spec 007-R7). Mismo cuerpo y reglas que EVI-02;
+        la foto anterior se borra de S3. Con votos responde 409 VOTING_STARTED.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+        - $ref: '#/components/parameters/EvidenceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLinkEvidenceRequest' }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                type:
+                  type: string
+                  enum: [photo]
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Evidencia reemplazada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Evidence' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/evidence/{eid}:
+    delete:
+      tags: [Evidence]
+      operationId: deleteEvidence
+      summary: Borrar evidencia propia antes del primer voto (EVI-05)
+      description: >-
+        Solo el autor y antes del primer voto (spec 007-R8). Se borra de S3. Si era la única evidencia el reto
+        vuelve a in_progress y se liberan los jurados (007-D2). Después del primer voto, 409 VOTING_STARTED:
+        el administrador del grupo la quita con REP-04.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EvidenceId'
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/evidence/{eid}/save-fame:
+    post:
+      tags: [Evidence]
+      operationId: saveEvidenceInFame
+      summary: Guardar foto en el Muro de la Fama (EVI-06)
+      description: >-
+        Cualquier miembro del grupo, solo fotos aprobadas de retos cumplidos (spec 007-R9). La foto deja de borrarse
+        a los 30 días (expires_at queda vacío). Idempotente. Reto no cumplido → 409; enlace → 422.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EvidenceId'
+      responses:
+        '200':
+          description: Foto guardada en la Fama
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Evidence' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/groups/{gid}/shame:
+    get:
+      tags: [Achievements]
+      operationId: groupShameWall
+      summary: Muro de la Vergüenza (ACH-02)
+      description: >-
+        Retos del grupo que terminaron en cheating o expired, más nuevos primero (spec 008-R9).
+        Tono ligero, sin fotos ni comentarios. Caché 60 s.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: Retos del muro
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ShameItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/users/{id}/achievements:
+    get:
+      tags: [Achievements]
+      operationId: userAchievements
+      summary: Logros de una persona (ACH-04)
+      description: >-
+        Catálogo v1 (spec 008-D1) con primer_reto, racha_3, racha_5, racha_10 y campeon_torneo. Solo para quien comparte un grupo
+        con la persona (o ella misma); si no, 404. Caché 60 s.
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Logros, más recientes primero
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Achievement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/tournaments:
     get:
       tags: [Tournaments]
@@ -1829,6 +1983,19 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    OptionalIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Opcional (spec 006-R13) para reenviar un borrador guardado sin conexión. Con la misma clave se devuelve la primera
+        respuesta (cabecera Idempotent-Replayed true) en vez de crear un duplicado. Se ignora en multipart (fotos).
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,128}$' }
+    EvidenceId:
+      name: eid
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -2210,6 +2377,7 @@ components:
         groups_count: { type: integer }
         notification_preferences: { $ref: '#/components/schemas/NotificationPreferences' }
         created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     NicknameAvailability:
       type: object
       properties:
@@ -2230,6 +2398,7 @@ components:
         role: { type: string, enum: [admin, member] }
         points_balance: { type: integer }
         joined_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     CastVoteRequest:
       type: object
       required: [vote]
@@ -2342,6 +2511,7 @@ components:
         requested_at: { type: string, format: date-time, nullable: true }
         completed_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     Notification:
       type: object
       properties:
@@ -2402,8 +2572,41 @@ components:
         provider: { type: string, nullable: true }
         object_key: { type: string, nullable: true }
         moderation: { $ref: '#/components/schemas/Moderation' }
+        saved_in_fame: { type: boolean }
         created_at: { type: string, format: date-time }
-        expires_at: { type: string, format: date-time, nullable: true }
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Fecha de borrado de la foto (30 días). Vacía en enlaces y en fotos del Muro de la Fama.
+    ShameItem:
+      type: object
+      properties:
+        contract_id: { type: string }
+        status: { type: string, enum: [cheating, expired] }
+        label: { type: string, description: Texto corto en tono ligero para la tarjeta }
+        executor:
+          type: object
+          nullable: true
+          properties:
+            user_id: { type: string }
+            nickname: { type: string }
+            avatar_id: { type: string }
+        game: { type: string }
+        condition: { type: string }
+        closed_at: { type: string, format: date-time, nullable: true }
+    Achievement:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [badge, streak, trophy] }
+        code: { type: string, enum: [primer_reto, racha_3, racha_5, racha_10, campeon_torneo] }
+        name: { type: string }
+        description: { type: string }
+        source_type: { type: string, enum: [contract, tournament] }
+        source_id: { type: string }
+        group_id: { type: string, nullable: true }
+        earned_at: { type: string, format: date-time }
     Tournament:
       type: object
       properties:

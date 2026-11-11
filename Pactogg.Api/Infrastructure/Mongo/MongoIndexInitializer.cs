@@ -121,6 +121,17 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Name = "ix_evidence_contract_created" }),
             cancellationToken: cancellationToken);
 
+        // Spec 007-R10: fotos vencidas fuera del Muro de la Fama.
+        await _context.Evidences.Indexes.CreateOneAsync(
+            new CreateIndexModel<Modules.Evidence.Domain.Evidence>(
+                Builders<Modules.Evidence.Domain.Evidence>.IndexKeys.Ascending(x => x.ExpiresAt),
+                new CreateIndexOptions<Modules.Evidence.Domain.Evidence>
+                {
+                    Name = "ix_evidence_expires_photo",
+                    PartialFilterExpression = Builders<Modules.Evidence.Domain.Evidence>.Filter.Eq(x => x.Type, "photo")
+                }),
+            cancellationToken: cancellationToken);
+
         await _context.Tournaments.Indexes.CreateOneAsync(
             new CreateIndexModel<Modules.Tournaments.Domain.Tournament>(
                 Builders<Modules.Tournaments.Domain.Tournament>.IndexKeys
@@ -192,6 +203,24 @@ public sealed class MongoIndexInitializer : BackgroundService
                 Builders<Modules.Reports.UserBlock>.IndexKeys.Ascending(x => x.BlockedId),
                 new CreateIndexOptions { Name = "ix_blocks_blocked" })
         ], cancellationToken);
+
+        // Spec 008-R10: un logro por persona, código y fuente.
+        await _context.Achievements.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Reputation.Achievement>(
+                Builders<Modules.Reputation.Achievement>.IndexKeys.Ascending(x => x.UserId).Ascending(x => x.Code).Ascending(x => x.SourceKey),
+                new CreateIndexOptions { Name = "ux_achievements_user_code_source", Unique = true }),
+            new CreateIndexModel<Modules.Reputation.Achievement>(
+                Builders<Modules.Reputation.Achievement>.IndexKeys.Ascending(x => x.UserId).Descending(x => x.EarnedAt),
+                new CreateIndexOptions { Name = "ix_achievements_user_earned" })
+        ], cancellationToken);
+
+        // Spec 009-R4: compromisos pendientes por antigüedad.
+        await _context.Commitments.Indexes.CreateOneAsync(
+            new CreateIndexModel<Modules.Commitments.Domain.Commitment>(
+                Builders<Modules.Commitments.Domain.Commitment>.IndexKeys.Ascending(x => x.Status).Ascending(x => x.CreatedAt),
+                new CreateIndexOptions { Name = "ix_commitments_status_created" }),
+            cancellationToken: cancellationToken);
 
         // CLARIFICACION #118: retención de 30 días. El índice TTL anterior (90 d) se reemplaza.
         try
