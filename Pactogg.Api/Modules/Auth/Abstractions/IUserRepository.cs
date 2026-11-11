@@ -22,6 +22,12 @@ public interface IUserRepository
 
     Task<User?> UpdateProfileAsync(ObjectId id, string? nickname, string? avatarId, DateTime at, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Spec 008-R12: suma los contadores y recalcula stats.word_index con <see cref="Pactogg.Api.Modules.Reputation.WordIndexCalculator"/>.
+    /// Con <see cref="StatsDelta.None"/> solo recalcula (después de cerrar un reto). Devuelve las estadísticas nuevas.
+    /// </summary>
+    Task<UserStats?> ApplyStatsAsync(ObjectId id, StatsDelta delta, DateTime now, CancellationToken cancellationToken);
+
     /// <summary>USR-04: borra datos personales y deja el apodo "Usuario eliminado" (CLARIFICACION #15, #16).</summary>
     Task AnonymizeAsync(ObjectId id, DateTime now, CancellationToken cancellationToken);
 }

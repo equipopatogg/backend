@@ -40,6 +40,10 @@ public sealed class Commitment
     [BsonElement("completed_at")]
     public DateTime? CompletedAt { get; set; }
 
+    /// <summary>Spec 009-R4: cuándo se avisó al deudor que el compromiso lleva más de 7 días pendiente (una sola vez).</summary>
+    [BsonElement("overdue_at")]
+    public DateTime? OverdueAt { get; set; }
+
     [BsonElement("created_at")]
     public DateTime CreatedAt { get; set; }
 

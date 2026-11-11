@@ -94,7 +94,11 @@ const collections = {
     required: ["group_id", "reporter_id", "target_type", "target_id", "reason", "status", "created_at"],
     properties: { target_type: { enum: ["evidence", "comment", "user"] }, status: { enum: ["open", "dismissed", "content_removed", "escalated"] } }
   },
-  blocks: { required: ["blocker_id", "blocked_id", "created_at"], properties: { blocker_id: oid, blocked_id: oid } }
+  blocks: { required: ["blocker_id", "blocked_id", "created_at"], properties: { blocker_id: oid, blocked_id: oid } },
+  achievements: {
+    required: ["user_id", "type", "code", "source_type", "source_id", "earned_at"],
+    properties: { user_id: oid, type: { enum: ["badge", "streak", "trophy"] }, source_type: { enum: ["contract", "tournament"] } }
+  }
 };
 
 const existing = new Set(target.getCollectionNames());
@@ -132,7 +136,10 @@ const indexes = {
     [{ group_id: 1, _id: -1 }, { name: "ix_contracts_group_created" }],
     [{ jurors: 1, status: 1 }, { name: "ix_contracts_jurors_status" }]
   ],
-  evidence: [[{ contract_id: 1, created_at: 1 }, { name: "ix_evidence_contract_created" }]],
+  evidence: [
+    [{ contract_id: 1, created_at: 1 }, { name: "ix_evidence_contract_created" }],
+    [{ expires_at: 1 }, { name: "ix_evidence_expires_photo", partialFilterExpression: { type: "photo" } }]
+  ],
   votes: [[{ contract_id: 1, juror_id: 1 }, { name: "ux_votes_contract_juror", unique: true }]],
   points_ledger: [
     [{ ref_id: 1, type: 1, user_id: 1 }, { name: "ux_points_ledger_ref_type_user", unique: true }],
@@ -141,7 +148,8 @@ const indexes = {
   commitments: [
     [{ contract_id: 1 }, { name: "ux_commitments_contract", unique: true }],
     [{ group_id: 1, debtor_id: 1, status: 1 }, { name: "ix_commitments_group_debtor_status" }],
-    [{ group_id: 1, creditor_id: 1, status: 1 }, { name: "ix_commitments_group_creditor_status" }]
+    [{ group_id: 1, creditor_id: 1, status: 1 }, { name: "ix_commitments_group_creditor_status" }],
+    [{ status: 1, created_at: 1 }, { name: "ix_commitments_status_created" }]
   ],
   devices: [
     [{ fcm_token: 1 }, { name: "ux_devices_fcm_token", unique: true }],
@@ -161,6 +169,10 @@ const indexes = {
   blocks: [
     [{ blocker_id: 1, blocked_id: 1 }, { name: "ux_blocks_pair", unique: true }],
     [{ blocked_id: 1 }, { name: "ix_blocks_blocked" }]
+  ],
+  achievements: [
+    [{ user_id: 1, code: 1, source_key: 1 }, { name: "ux_achievements_user_code_source", unique: true }],
+    [{ user_id: 1, earned_at: -1 }, { name: "ix_achievements_user_earned" }]
   ]
 };
 

@@ -48,6 +48,7 @@ public class PactoggWebFactory : WebApplicationFactory<Program>
     public FakePushSender Push { get; } = new();
     public InMemoryReportRepository Reports { get; } = new();
     public InMemoryBlockRepository Blocks { get; } = new();
+    public InMemoryAchievementRepository Achievements { get; } = new();
 
     public PactoggWebFactory()
     {
@@ -125,6 +126,8 @@ public class PactoggWebFactory : WebApplicationFactory<Program>
             services.AddSingleton<Pactogg.Api.Modules.Reports.IReportRepository>(Reports);
             services.RemoveAll<Pactogg.Api.Modules.Reports.IBlockRepository>();
             services.AddSingleton<Pactogg.Api.Modules.Reports.IBlockRepository>(Blocks);
+            services.RemoveAll<Pactogg.Api.Modules.Reputation.IAchievementRepository>();
+            services.AddSingleton<Pactogg.Api.Modules.Reputation.IAchievementRepository>(Achievements);
             services.AddTransient<IStartupFilter, IdempotencyTestHandler>();
         });
     }

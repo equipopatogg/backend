@@ -54,6 +54,8 @@ public static class ErrorCodes
     public const string InvalidReportState = "INVALID_REPORT_STATE";
     public const string BlockedByUser = "BLOCKED_BY_USER";
     public const string NotCommitmentParty = "NOT_COMMITMENT_PARTY";
+    public const string VotingStarted = "VOTING_STARTED";
+    public const string NotEvidenceOwner = "NOT_EVIDENCE_OWNER";
     public const string InvalidCommitmentState = "INVALID_COMMITMENT_STATE";
     public const string CannotAcceptOwnContract = "CANNOT_ACCEPT_OWN_CONTRACT";
     public const string ModerationUnavailable = "MODERATION_UNAVAILABLE";

@@ -74,6 +74,19 @@ public sealed class MongoCommitmentRepository : ICommitmentRepository
         return (int)await _context.Commitments.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Commitment>> ListOverdueCandidatesAsync(DateTime createdBefore, int limit, CancellationToken cancellationToken) =>
+        await _context.Commitments
+            .Find(x => x.Status == "pending" && x.OverdueAt == null && x.CreatedAt <= createdBefore)
+            .Limit(limit)
+            .ToListAsync(cancellationToken);
+
+    public async Task<Commitment?> TryMarkOverdueAsync(ObjectId id, DateTime now, CancellationToken cancellationToken) =>
+        await _context.Commitments.FindOneAndUpdateAsync(
+            Builders<Commitment>.Filter.Where(x => x.Id == id && x.Status == "pending" && x.OverdueAt == null),
+            Builders<Commitment>.Update.Set(x => x.OverdueAt, now).Set(x => x.UpdatedAt, now),
+            new FindOneAndUpdateOptions<Commitment> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+
     public Task CloseOpenForUserAsync(ObjectId userId, DateTime now, CancellationToken cancellationToken) =>
         _context.Commitments.UpdateManyAsync(
             Builders<Commitment>.Filter.In(x => x.Status, new[] { "pending", "completion_requested" })

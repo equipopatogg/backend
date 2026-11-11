@@ -7,6 +7,7 @@ using Pactogg.Api.Modules.Commitments.Domain;
 using Pactogg.Api.Modules.Commitments.Dtos;
 using Pactogg.Api.Modules.Groups;
 using Pactogg.Api.Modules.Notifications;
+using Pactogg.Api.Modules.Reputation;
 
 namespace Pactogg.Api.Modules.Commitments;
 
@@ -20,14 +21,17 @@ public sealed class CommitmentService
     private readonly GroupAccess _access;
     private readonly NotificationService _notifications;
     private readonly IAuditService _audit;
+    private readonly ReputationService _reputation;
 
     public CommitmentService(
         ICommitmentRepository commitments,
         IUserRepository users,
         GroupAccess access,
         NotificationService notifications,
-        IAuditService audit)
+        IAuditService audit,
+        ReputationService reputation)
     {
+        _reputation = reputation;
         _commitments = commitments;
         _users = users;
         _access = access;
@@ -88,8 +92,12 @@ public sealed class CommitmentService
             throw ApiException.Forbidden(ErrorCodes.NotCommitmentParty, "Solo a quien se le debe puede marcarlo como cumplido.");
         }
 
-        var updated = await _commitments.TryTransitionAsync(commitment.Id, ["pending", "completion_requested"], "completed", DateTime.UtcNow, cancellationToken)
+        var now = DateTime.UtcNow;
+        var updated = await _commitments.TryTransitionAsync(commitment.Id, ["pending", "completion_requested"], "completed", now, cancellationToken)
             ?? throw ApiException.Conflict(ErrorCodes.InvalidCommitmentState, "El compromiso ya estaba cumplido.");
+
+        // 008-R12: cumplido dentro de los 7 días cuenta a favor del Índice de Palabra del deudor.
+        await _reputation.OnCommitmentCompletedAsync(updated, now, cancellationToken);
 
         await _audit.AppendAsync("commitment.completed", userId, "commitment", updated.Id, updated.GroupId, new { commitment_id = updated.Id.ToString() }, cancellationToken);
         await _notifications.NotifyAsync(
@@ -160,7 +168,8 @@ public sealed class CommitmentService
             Status = x.Status,
             RequestedAt = x.RequestedAt,
             CompletedAt = x.CompletedAt,
-            CreatedAt = x.CreatedAt
+            CreatedAt = x.CreatedAt,
+            UpdatedAt = x.UpdatedAt == default ? x.CreatedAt : x.UpdatedAt
         }).ToList();
     }
 }

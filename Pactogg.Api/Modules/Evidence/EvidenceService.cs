@@ -96,17 +96,7 @@ public sealed class EvidenceService
         CancellationToken cancellationToken)
     {
         var contract = await GetContractAsync(userId, contractId, cancellationToken);
-        if (!string.Equals(request.Type, "link", StringComparison.OrdinalIgnoreCase))
-        {
-            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "type debe ser link.");
-        }
-
-        var uri = EvidenceUrlValidator.Validate(request.Url, _options.AllowedHosts);
-        var moderation = await _moderation.ModerateTextAsync(uri.AbsoluteUri, cancellationToken);
-        if (!moderation.Approved)
-        {
-            throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El enlace fue rechazado por moderación.", new { labels = moderation.Labels });
-        }
+        var uri = await ValidateLinkAsync(request, cancellationToken);
 
         await EnsureEvidenceSlotAsync(contract, cancellationToken);
         var now = DateTime.UtcNow;
@@ -146,18 +136,8 @@ public sealed class EvidenceService
             throw ApiException.Unprocessable(ErrorCodes.UnsupportedMediaType, "Solo se admiten JPEG, PNG o WebP.");
         }
 
-        if (content.LongLength > _options.MaxImageBytes)
-        {
-            throw ApiException.Unprocessable(ErrorCodes.ImageTooLarge, "La imagen supera el tamaño permitido.");
-        }
-
         var contract = await GetContractAsync(userId, contractId, cancellationToken);
-        var normalized = ImageProcessor.Normalize(content);
-        var moderation = await _moderation.ModerateImageAsync(normalized, cancellationToken);
-        if (!moderation.Approved)
-        {
-            throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "La imagen fue rechazada por moderación.", new { labels = moderation.Labels });
-        }
+        var normalized = await ValidatePhotoAsync(content, contentType, cancellationToken);
 
         await EnsureEvidenceSlotAsync(contract, cancellationToken);
         var now = DateTime.UtcNow;
@@ -205,6 +185,221 @@ public sealed class EvidenceService
         return ToResponse(evidence);
     }
 
+    /// <summary>
+    /// EVI-04 (007-R7): el autor reemplaza su evidencia con las mismas reglas de EVI-02 mientras el reto no tenga votos.
+    /// La foto anterior se borra de S3 después de guardar la nueva.
+    /// </summary>
+    public async Task<EvidenceResponse> ReplaceAsync(
+        ObjectId userId,
+        string contractId,
+        string evidenceId,
+        EvidenceUpload upload,
+        CancellationToken cancellationToken)
+    {
+        var (contract, current) = await LoadOwnEditableAsync(userId, evidenceId, contractId, cancellationToken);
+        var now = DateTime.UtcNow;
+        EvidenceEntity? before;
+        string? newKey = null;
+        if (upload.Link is not null)
+        {
+            var uri = await ValidateLinkAsync(upload.Link, cancellationToken);
+            before = await _evidence.ReplaceContentAsync(current.Id, "link", uri.AbsoluteUri, ProviderFor(uri.Host), null, null, null, now, cancellationToken);
+        }
+        else
+        {
+            var normalized = await ValidatePhotoAsync(upload.Content!, upload.ContentType!, cancellationToken);
+            newKey = await _storage.PutAsync(normalized, "image/jpeg", $"evidence/{contract.GroupId}/{contract.Id}/{current.Id}-{ObjectId.GenerateNewId()}.jpg", cancellationToken);
+            before = await _evidence.ReplaceContentAsync(current.Id, "photo", null, null, newKey, normalized.LongLength, now.AddDays(_options.RetentionDays), now, cancellationToken);
+        }
+
+        if (before is null)
+        {
+            if (newKey is not null)
+            {
+                await _storage.DeleteAsync(newKey, CancellationToken.None);
+            }
+
+            throw ApiException.NotFound("La evidencia no existe.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(before.ObjectKey) && before.ObjectKey != newKey)
+        {
+            await _storage.DeleteAsync(before.ObjectKey, cancellationToken);
+        }
+
+        await _audit.AppendAsync("evidence.replaced", userId, "evidence", current.Id, contract.GroupId, new { contract_id = contract.Id.ToString(), type = upload.Link is null ? "photo" : "link" }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
+        var updated = await _evidence.GetByIdAsync(current.Id, cancellationToken) ?? throw ApiException.NotFound("La evidencia no existe.");
+        return await ToResponseWithUrlAsync(updated, cancellationToken);
+    }
+
+    /// <summary>
+    /// EVI-05 (007-R8): el autor borra su evidencia antes del primer voto. Si era la única, el reto vuelve a
+    /// in_progress y se liberan los jurados (007-D2). Después del primer voto solo el administrador puede quitarla (REP-04).
+    /// </summary>
+    public async Task<string> DeleteAsync(ObjectId userId, string evidenceId, CancellationToken cancellationToken)
+    {
+        var (contract, current) = await LoadOwnEditableAsync(userId, evidenceId, null, cancellationToken);
+        var deleted = await _evidence.DeleteAsync(current.Id, cancellationToken)
+            ?? throw ApiException.NotFound("La evidencia no existe.");
+        if (!string.IsNullOrWhiteSpace(deleted.ObjectKey))
+        {
+            await _storage.DeleteAsync(deleted.ObjectKey, cancellationToken);
+        }
+
+        await _contracts.DecrementEvidenceAsync(contract.Id, cancellationToken);
+        await _audit.AppendAsync("evidence.deleted", userId, "evidence", current.Id, contract.GroupId, new { contract_id = contract.Id.ToString() }, cancellationToken);
+
+        var status = contract.Status;
+        if (await _evidence.CountByContractAsync(contract.Id, cancellationToken) == 0)
+        {
+            var reverted = await _contracts.TryRevertToInProgressAsync(contract.Id, DateTime.UtcNow, cancellationToken);
+            if (reverted is not null)
+            {
+                status = reverted.Status;
+                await _audit.AppendAsync("contract.voting_reverted", userId, "contract", contract.Id, contract.GroupId, new { contract_id = contract.Id.ToString() }, cancellationToken);
+            }
+        }
+
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
+        return status;
+    }
+
+    /// <summary>
+    /// EVI-06 (007-R9): cualquier miembro guarda en el Muro de la Fama una foto aprobada de un reto cumplido.
+    /// La foto se copia a fame/ (fuera de la regla de 30 días del bucket) y pierde su fecha de borrado. Idempotente.
+    /// </summary>
+    public async Task<EvidenceResponse> SaveInFameAsync(ObjectId userId, string evidenceId, CancellationToken cancellationToken)
+    {
+        var current = await LoadApprovedAsync(evidenceId, cancellationToken);
+        var contract = await _contracts.GetByIdAsync(current.ContractId, cancellationToken)
+            ?? throw ApiException.NotFound("La evidencia no existe.");
+        await _access.RequireMemberAsync(userId, contract.GroupId, cancellationToken);
+
+        if (contract.Status != "fulfilled")
+        {
+            throw ApiException.Conflict(ErrorCodes.InvalidContractState, "Solo se guardan en el Muro de la Fama las fotos de retos cumplidos.");
+        }
+
+        if (current.Type != "photo" || string.IsNullOrWhiteSpace(current.ObjectKey))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Solo las fotos se guardan en el Muro de la Fama; los enlaces no se borran.");
+        }
+
+        if (current.SavedInFame)
+        {
+            return await ToResponseWithUrlAsync(current, cancellationToken);
+        }
+
+        var oldKey = current.ObjectKey;
+        var fameKey = oldKey.StartsWith("evidence/", StringComparison.Ordinal) ? "fame/" + oldKey["evidence/".Length..] : "fame/" + oldKey;
+        await _storage.CopyAsync(oldKey, fameKey, cancellationToken);
+        var saved = await _evidence.SaveInFameAsync(current.Id, fameKey, cancellationToken)
+            ?? throw ApiException.NotFound("La evidencia no existe.");
+        if (oldKey != fameKey)
+        {
+            await _storage.DeleteAsync(oldKey, cancellationToken);
+        }
+
+        await _audit.AppendAsync("evidence.saved_in_fame", userId, "evidence", current.Id, contract.GroupId, new { contract_id = contract.Id.ToString() }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(contract.GroupId), cancellationToken);
+        return await ToResponseWithUrlAsync(saved, cancellationToken);
+    }
+
+    private async Task<EvidenceEntity> LoadApprovedAsync(string evidenceId, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(evidenceId, out var id))
+        {
+            throw ApiException.NotFound("La evidencia no existe.");
+        }
+
+        var evidence = await _evidence.GetByIdAsync(id, cancellationToken);
+        if (evidence is null || evidence.Moderation.Status != "approved")
+        {
+            throw ApiException.NotFound("La evidencia no existe.");
+        }
+
+        return evidence;
+    }
+
+    /// <summary>Evidencia propia de un reto en voting sin votos ni fase del administrador (EVI-04/05).</summary>
+    private async Task<(Contract Contract, EvidenceEntity Evidence)> LoadOwnEditableAsync(ObjectId userId, string evidenceId, string? contractId, CancellationToken cancellationToken)
+    {
+        var evidence = await LoadApprovedAsync(evidenceId, cancellationToken);
+        if (contractId is not null && (!ObjectId.TryParse(contractId, out var cid) || cid != evidence.ContractId))
+        {
+            throw ApiException.NotFound("La evidencia no existe.");
+        }
+
+        var contract = await _contracts.GetByIdAsync(evidence.ContractId, cancellationToken)
+            ?? throw ApiException.NotFound("La evidencia no existe.");
+        await _access.RequireMemberAsync(userId, contract.GroupId, cancellationToken);
+
+        if (evidence.UserId != userId)
+        {
+            throw ApiException.Forbidden(ErrorCodes.NotEvidenceOwner, "Solo quien subió la evidencia puede cambiarla o borrarla; el administrador usa los reportes.");
+        }
+
+        if (contract.Status != "voting")
+        {
+            throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto ya terminó; la evidencia no se puede cambiar.");
+        }
+
+        if (contract.Voters.Count > 0 || contract.AdminDeadlineAt is not null)
+        {
+            throw ApiException.Conflict(ErrorCodes.VotingStarted, "Ya hay votos: la evidencia quedó congelada.");
+        }
+
+        return (contract, evidence);
+    }
+
+    private async Task<Uri> ValidateLinkAsync(CreateLinkEvidenceRequest request, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(request.Type, "link", StringComparison.OrdinalIgnoreCase))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "type debe ser link.");
+        }
+
+        var uri = EvidenceUrlValidator.Validate(request.Url, _options.AllowedHosts);
+        var moderation = await _moderation.ModerateTextAsync(uri.AbsoluteUri, cancellationToken);
+        if (!moderation.Approved)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El enlace fue rechazado por moderación.", new { labels = moderation.Labels });
+        }
+
+        return uri;
+    }
+
+    private async Task<byte[]> ValidatePhotoAsync(byte[] content, string contentType, CancellationToken cancellationToken)
+    {
+        if (!AllowedContentTypes.Contains(contentType))
+        {
+            throw ApiException.Unprocessable(ErrorCodes.UnsupportedMediaType, "Solo se admiten JPEG, PNG o WebP.");
+        }
+
+        if (content.LongLength > _options.MaxImageBytes)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ImageTooLarge, "La imagen supera el tamaño permitido.");
+        }
+
+        var normalized = ImageProcessor.Normalize(content);
+        var moderation = await _moderation.ModerateImageAsync(normalized, cancellationToken);
+        if (!moderation.Approved)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "La imagen fue rechazada por moderación.", new { labels = moderation.Labels });
+        }
+
+        return normalized;
+    }
+
+    private async Task<EvidenceResponse> ToResponseWithUrlAsync(EvidenceEntity item, CancellationToken cancellationToken)
+    {
+        var url = item.Type == "photo" && !string.IsNullOrWhiteSpace(item.ObjectKey)
+            ? await _storage.GetReadUrlAsync(item.ObjectKey, TimeSpan.FromMinutes(15), cancellationToken)
+            : item.Url;
+        return ToResponse(item, url);
+    }
+
     /// <summary>EVI-03: evidencias del reto con URL del CDN; solo miembros del grupo.</summary>
     public async Task<IReadOnlyList<EvidenceResponse>> ListAsync(ObjectId userId, string contractId, CancellationToken cancellationToken)
     {
@@ -221,10 +416,7 @@ public sealed class EvidenceService
         var responses = new List<EvidenceResponse>(items.Count);
         foreach (var item in items.Where(x => x.Moderation.Status == "approved"))
         {
-            var url = item.Type == "photo" && !string.IsNullOrWhiteSpace(item.ObjectKey)
-                ? await _storage.GetReadUrlAsync(item.ObjectKey, TimeSpan.FromMinutes(15), cancellationToken)
-                : item.Url;
-            responses.Add(ToResponse(item, url));
+            responses.Add(await ToResponseWithUrlAsync(item, cancellationToken));
         }
 
         return responses;
@@ -394,6 +586,7 @@ public sealed class EvidenceService
             Labels = evidence.Moderation.Labels,
             ModeratedAt = evidence.Moderation.ModeratedAt
         },
+        SavedInFame = evidence.SavedInFame,
         CreatedAt = evidence.CreatedAt,
         ExpiresAt = evidence.ExpiresAt
     };

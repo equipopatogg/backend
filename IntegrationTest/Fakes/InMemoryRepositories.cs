@@ -30,6 +30,26 @@ public sealed class InMemoryUserRepository : IUserRepository
 
     public IReadOnlyList<User> All() => _users.Values.ToList();
 
+    public async Task<UserStats?> ApplyStatsAsync(ObjectId id, StatsDelta delta, DateTime now, CancellationToken cancellationToken)
+    {
+        var user = await GetByIdAsync(id, cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        lock (user)
+        {
+            user.Stats.Expired += delta.Expired;
+            user.Stats.CommitmentsOnTime += delta.CommitmentsOnTime;
+            user.Stats.CommitmentsOverdue += delta.CommitmentsOverdue;
+            user.Stats.AlignedVotes += delta.AlignedVotes;
+            user.Stats.WordIndex = Pactogg.Api.Modules.Reputation.WordIndexCalculator.Compute(user.Stats);
+            user.UpdatedAt = now;
+            return user.Stats;
+        }
+    }
+
     public Task AnonymizeAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
     {
         if (_users.TryGetValue(id, out var u))
@@ -495,6 +515,17 @@ public sealed class InMemoryContractRepository : IContractRepository
         return Task.FromResult<(IReadOnlyList<Contract>, bool)>((items.Take(limit).ToList(), items.Count > limit));
     }
 
+    public Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListShameAsync(ObjectId groupId, int limit, ObjectId? cursor, CancellationToken cancellationToken)
+    {
+        var items = _contracts.Values
+            .Where(x => x.GroupId == groupId && (x.Status == "cheating" || x.Status == "expired"))
+            .Where(x => !cursor.HasValue || x.Id < cursor.Value)
+            .OrderByDescending(x => x.Id)
+            .Take(limit + 1)
+            .ToList();
+        return Task.FromResult<(IReadOnlyList<Contract>, bool)>((items.Take(limit).ToList(), items.Count > limit));
+    }
+
     public Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListFulfilledAsync(ObjectId groupId, int limit, ObjectId? cursor, CancellationToken cancellationToken)
     {
         var items = _contracts.Values
@@ -748,6 +779,19 @@ public sealed class InMemoryContractRepository : IContractRepository
             x.UpdatedAt = now;
         });
 
+    public Task<Contract?> TryRevertToInProgressAsync(ObjectId id, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "voting" && x.Voters.Count == 0 && x.AdminDeadlineAt == null && x.EvidenceCount <= 0, x =>
+        {
+            x.Status = "in_progress";
+            x.Jurors = [];
+            x.VotingStartedAt = null;
+            x.VotingEndsAt = null;
+            x.VotingExtended = false;
+            x.ExtraJurorAssigned = false;
+            x.VoteReminderSent = false;
+            x.UpdatedAt = now;
+        });
+
     private Task<Contract?> Mutate(ObjectId id, Func<Contract, bool> when, Action<Contract> apply)
     {
         lock (_contracts)
@@ -958,7 +1002,61 @@ public sealed class InMemoryEvidenceRepository : IEvidenceRepository
     }
 
     public Task<int> CountByContractAsync(ObjectId contractId, CancellationToken cancellationToken) =>
-        Task.FromResult(_evidence.Values.Count(x => x.ContractId == contractId));
+        Task.FromResult(_evidence.Values.Count(x => x.ContractId == contractId && x.Moderation.Status == "approved"));
+
+    private static EvidenceEntity Copy(EvidenceEntity e) => new()
+    {
+        Id = e.Id, ContractId = e.ContractId, UserId = e.UserId, Type = e.Type, ObjectKey = e.ObjectKey, Url = e.Url,
+        Provider = e.Provider, SizeBytes = e.SizeBytes, SavedInFame = e.SavedInFame, ExpiresAt = e.ExpiresAt, CreatedAt = e.CreatedAt,
+        Moderation = new() { Status = e.Moderation.Status, Labels = [.. e.Moderation.Labels], ModeratedAt = e.Moderation.ModeratedAt }
+    };
+
+    public Task<EvidenceEntity?> ReplaceContentAsync(ObjectId id, string type, string? url, string? provider, string? objectKey, long? sizeBytes, DateTime? expiresAt, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_evidence)
+        {
+            if (!_evidence.TryGetValue(id, out var e) || e.Moderation.Status != "approved") return Task.FromResult<EvidenceEntity?>(null);
+            var before = Copy(e);
+            e.Type = type; e.Url = url; e.Provider = provider; e.ObjectKey = objectKey; e.SizeBytes = sizeBytes; e.ExpiresAt = expiresAt;
+            e.Moderation.ModeratedAt = now; e.CreatedAt = now;
+            return Task.FromResult<EvidenceEntity?>(before);
+        }
+    }
+
+    public Task<EvidenceEntity?> DeleteAsync(ObjectId id, CancellationToken cancellationToken)
+    {
+        lock (_evidence)
+        {
+            if (!_evidence.TryGetValue(id, out var e) || e.Moderation.Status != "approved") return Task.FromResult<EvidenceEntity?>(null);
+            _evidence.TryRemove(id, out _);
+            return Task.FromResult<EvidenceEntity?>(e);
+        }
+    }
+
+    public Task<EvidenceEntity?> SaveInFameAsync(ObjectId id, string objectKey, CancellationToken cancellationToken)
+    {
+        lock (_evidence)
+        {
+            if (!_evidence.TryGetValue(id, out var e) || e.Moderation.Status != "approved") return Task.FromResult<EvidenceEntity?>(null);
+            e.SavedInFame = true; e.ObjectKey = objectKey; e.ExpiresAt = null;
+            return Task.FromResult<EvidenceEntity?>(Copy(e));
+        }
+    }
+
+    public Task<IReadOnlyList<EvidenceEntity>> ListExpiredPhotosAsync(DateTime now, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EvidenceEntity>>(_evidence.Values
+            .Where(x => x.Type == "photo" && x.Moderation.Status == "approved" && !x.SavedInFame && x.ExpiresAt != null && x.ExpiresAt <= now)
+            .Take(limit).ToList());
+
+    public Task MarkExpiredAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        if (_evidence.TryGetValue(id, out var e) && e.Moderation.Status == "approved" && !e.SavedInFame)
+        {
+            e.Moderation.Status = "expired"; e.Moderation.ModeratedAt = now;
+        }
+
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyList<EvidenceEntity>> ListByContractIdsAsync(
         IReadOnlyCollection<ObjectId> contractIds,
@@ -1108,6 +1206,16 @@ public sealed class FakeObjectStorage : IObjectStorage
         return Task.CompletedTask;
     }
 
+    public Task CopyAsync(string sourceKey, string destinationKey, CancellationToken cancellationToken)
+    {
+        if (_objects.TryGetValue(sourceKey, out var content))
+        {
+            _objects[destinationKey] = content;
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<string> PutAsync(byte[] content, string contentType, string objectKey, CancellationToken cancellationToken)
     {
         _objects[objectKey] = content;
@@ -1184,6 +1292,19 @@ public sealed class InMemoryCommitmentRepository : ICommitmentRepository
     private readonly ConcurrentDictionary<ObjectId, Commitment> _items = new();
 
     public void Add(Commitment commitment) => _items[commitment.Id] = commitment;
+
+    public Task<IReadOnlyList<Commitment>> ListOverdueCandidatesAsync(DateTime createdBefore, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Commitment>>(_items.Values.Where(x => x.Status == "pending" && x.OverdueAt == null && x.CreatedAt <= createdBefore).Take(limit).ToList());
+
+    public Task<Commitment?> TryMarkOverdueAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_items)
+        {
+            if (!_items.TryGetValue(id, out var c) || c.Status != "pending" || c.OverdueAt != null) return Task.FromResult<Commitment?>(null);
+            c.OverdueAt = now; c.UpdatedAt = now;
+            return Task.FromResult<Commitment?>(c);
+        }
+    }
 
     public Task CloseOpenForUserAsync(ObjectId userId, DateTime now, CancellationToken cancellationToken)
     {
@@ -1477,4 +1598,17 @@ public sealed class InMemoryBlockRepository : Pactogg.Api.Modules.Reports.IBlock
         foreach (var key in _items.Keys.Where(k => k.Item1 == userId || k.Item2 == userId).ToList()) _items.TryRemove(key, out _);
         return Task.CompletedTask;
     }
+}
+
+public sealed class InMemoryAchievementRepository : Pactogg.Api.Modules.Reputation.IAchievementRepository
+{
+    private readonly ConcurrentDictionary<string, Pactogg.Api.Modules.Reputation.Achievement> _items = new();
+
+    public IReadOnlyList<Pactogg.Api.Modules.Reputation.Achievement> All => _items.Values.ToList();
+
+    public Task<bool> TryAwardAsync(Pactogg.Api.Modules.Reputation.Achievement achievement, CancellationToken cancellationToken) =>
+        Task.FromResult(_items.TryAdd($"{achievement.UserId}:{achievement.Code}:{achievement.SourceKey}", achievement));
+
+    public Task<IReadOnlyList<Pactogg.Api.Modules.Reputation.Achievement>> ListByUserAsync(ObjectId userId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Pactogg.Api.Modules.Reputation.Achievement>>(_items.Values.Where(x => x.UserId == userId).OrderByDescending(x => x.EarnedAt).ToList());
 }

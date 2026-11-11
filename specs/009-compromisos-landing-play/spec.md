@@ -1,6 +1,6 @@
 # 009 — Compromisos, landing y Google Play
 
-**Fecha:** 2026-11-07 · **Estado:** Borrador para Kevin H. (dueño de la fila 101); parte de backend implementada salvo 009-T2 · **Sprint:** 4
+**Fecha:** 2026-11-07 · **Estado:** Borrador para Kevin H. (dueño de la fila 101); parte de backend implementada (009-T2 en v0.10.0) · **Sprint:** 4
 **Historias:** ID 124 Compromisos por cumplir · ID 125 Compromisos a mi favor · ID 129 Recordatorios de compromisos · publicación en Google Play (pruebas internas, 16–27 nov).
 **Endpoints del CRUD:** COM-01..05 (hechos), COM-06 interno (hecho).
 **Fuentes:** constitución §6.6 y §12; CLARIFICACION #1, #89, #116, #131 y resumen (landing, Google Play, privacidad); Descripción del Backend 7.7; CRUD hoja Compromisos.
@@ -36,7 +36,7 @@ Pagos o canjes (regla de oro), tienda pública de Google Play, dominio de paga, 
 | ID | Requisito | Evidencia |
 |---|---|---|
 | 009-AC1 | R1–R3 | `JuryFlowTests`, `DetailEndpointsTests.CommitmentDetailAndSummary` |
-| 009-AC2 | R4 | Por hacer (009-T2) |
+| 009-AC2 | R4 | `Spec006And009Tests.AC13_CommitmentPendingMoreThan7Days_NotifiesTheDebtorOnce_AndCountsForTheIndex` |
 | 009-AC4 | R8, R9 | Enlace de prueba interna que instala la app en un celular del equipo |
 
 ## 5. Preguntas abiertas

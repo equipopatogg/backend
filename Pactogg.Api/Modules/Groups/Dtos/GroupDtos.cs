@@ -57,6 +57,7 @@ public sealed class GroupMemberResponse
     public string Role { get; init; } = "member";
     public int PointsBalance { get; init; }
     public DateTime JoinedAt { get; init; }
+    public DateTime UpdatedAt { get; init; }
 }
 
 /// <summary>GRP-04: cambios parciales del grupo.</summary>

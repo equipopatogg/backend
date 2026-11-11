@@ -11,9 +11,9 @@ Backend (David M.):
 - [x] 006-T5 — Quitar dispositivos al cerrar sesión en todos lados, restablecer contraseña o detectar refresh robado; 006-R3; 006-AC4 (2026-11-06).
 - [x] 006-T6 — Errores normales para acciones que ya no son válidas; 006-R14; 006-AC12.
 - [ ] 006-T7 — Cuenta de servicio de Firebase en SSM y `user_data` (con SMTP; reemplaza instancias).
-- [ ] 006-T8 — `Idempotency-Key` opcional en CON-01 y EVI-02; 006-R13; 006-AC11.
-- [ ] 006-T9 — Aviso de compromiso por cumplir a los 7 días; 006-R15; 006-AC13.
-- [ ] 006-T10 — `updated_at` en grupo, miembro, compromiso y perfil; 006-R12; 006-AC10.
+- [x] 006-T8 — `Idempotency-Key` opcional en CON-01 y EVI-02; 006-R13; 006-AC11.
+- [x] 006-T9 — Aviso de compromiso por cumplir a los 7 días; 006-R15; 006-AC13.
+- [x] 006-T10 — `updated_at` en grupo, miembro, compromiso y perfil; 006-R12; 006-AC10.
 
 Móvil (Diego S. y José G.):
 

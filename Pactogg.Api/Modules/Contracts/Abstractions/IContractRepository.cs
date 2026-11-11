@@ -18,6 +18,12 @@ public interface IContractRepository
     /// <summary>Pasa a voting (si no lo estaba), fija quién ejecuta el reto, los jurados y el fin de la votación.</summary>
     Task MarkVotingAsync(ObjectId id, ObjectId executorId, IReadOnlyList<ObjectId> jurors, DateTime votingEndsAt, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// 007-D2: voting → in_progress cuando se borró la única evidencia antes del primer voto.
+    /// Solo si no hay votos, no hay fase del administrador y evidence_count llegó a 0. Libera a los jurados.
+    /// </summary>
+    Task<Contract?> TryRevertToInProgressAsync(ObjectId id, DateTime now, CancellationToken cancellationToken);
+
     /// <summary>VOT-02: registra un voto en el contador del contrato (solo jurados que no han votado, estado voting).</summary>
     Task<Contract?> TryRegisterVoteAsync(ObjectId id, ObjectId jurorId, bool legit, DateTime now, CancellationToken cancellationToken);
 
@@ -26,6 +32,9 @@ public interface IContractRepository
 
     /// <summary>Retos cumplidos del grupo, del más reciente al más antiguo (Muro de la Fama).</summary>
     Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListFulfilledAsync(ObjectId groupId, int limit, ObjectId? cursor, CancellationToken cancellationToken);
+
+    /// <summary>ACH-02: retos del grupo que terminaron en cheating o expired, del más reciente al más antiguo.</summary>
+    Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListShameAsync(ObjectId groupId, int limit, ObjectId? cursor, CancellationToken cancellationToken);
 
     /// <summary>
     /// Cierra la votación en una transacción: voting → fulfilled|cheating, mueve la fianza

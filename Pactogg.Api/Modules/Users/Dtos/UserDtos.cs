@@ -31,6 +31,7 @@ public sealed class ProfileResponse
     public int GroupsCount { get; init; }
     public NotificationPreferencesDto NotificationPreferences { get; init; } = new();
     public DateTime CreatedAt { get; init; }
+    public DateTime UpdatedAt { get; init; }
 }
 
 /// <summary>USR-05: lo que ven otros miembros. Nunca incluye el correo.</summary>

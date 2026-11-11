@@ -1,6 +1,6 @@
 # 008 — Jurado, puntos y resultados
 
-**Fecha:** 2026-11-07 · **Estado:** Aprobada; por implementar · **Sprint:** 4 (fila 100)
+**Fecha:** 2026-11-07 · **Estado:** Aprobada e implementada (v0.10.0, 2026-11-10); el trofeo `campeon_torneo` se entrega con la spec 010 · **Sprint:** 4 (fila 100)
 **Historias:** jurado aleatorio, votación y resultado, libro de puntos y fianzas, ranking y Rey del Grupo, Muro de la Fama y de la Vergüenza, logros, Índice de Palabra (ID 25).
 **Endpoints del CRUD:** VOT-01..05, PTS-01..03, ACH-01, ACH-03 (hechos); ACH-02, ACH-04 (por hacer); PTS-04/05 internos; ACH-05/06 fuera de alcance.
 **Fuentes:** constitución §6.5, §6.6, §6.8; CLARIFICACION #71–#95, #108–#115; Descripción del Backend 7.6, 7.7, 7.9; CRUD hojas Votos, Puntos y Logros; F2-D40–F2-D44.
@@ -50,9 +50,9 @@ VOT-01..05, PTS-01..03, ACH-01..04 (rutas en la lista de endpoints). Esquemas: `
 | 008-AC4 | R6 | `JuryFlowTests` (resumen sin autores) |
 | 008-AC5 | R7 | `JuryFlowTests` (libro y saldo), `DetailEndpointsTests` |
 | 008-AC6 | R8 | `DetailEndpointsTests.PointsMovement_OnlyOwnerOrAdmin_AndRankingHasKing` |
-| 008-AC7 | R9 | Por hacer (008-T2): un reto vencido y uno con trampa aparecen; uno cumplido no |
-| 008-AC8 | R10, R11 | Por hacer (008-T3): primer reto cumplido → insignia una sola vez; ajeno → 404 |
-| 008-AC9 | R12 | Por hacer (008-T1): unitarias del cálculo (límites 0 y 100) e integración tras cerrar un reto |
+| 008-AC7 | R9 | `Spec008ReputationTests.AC7_ShameWall_ListsCheatingAndExpired_NotFulfilled_OnlyForMembers` |
+| 008-AC8 | R10, R11 | `Spec008ReputationTests.AC8_AC9_FulfilledContract_…`, `AC8_Streaks_AreAwardedOncePerPerson` |
+| 008-AC9 | R12 | `Spec008ReputationTests.AC9_WordIndexFormula_IsDeterministicAndClamped`, `AC9_AcceptedContractThatExpires_…`, `AC8_AC9_FulfilledContract_…`, `Spec006And009Tests.AC13_…` |
 
 ## 7. Decisiones (aprobadas por el PO el 2026-11-07)
 

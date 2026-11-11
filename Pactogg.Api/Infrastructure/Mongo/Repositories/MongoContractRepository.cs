@@ -127,6 +127,31 @@ public sealed class MongoContractRepository : IContractRepository
             cancellationToken: cancellationToken);
     }
 
+    public async Task<Contract?> TryRevertToInProgressAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        var builder = Builders<Contract>.Filter;
+        var filter = builder.Eq(x => x.Id, id)
+            & builder.Eq(x => x.Status, "voting")
+            & builder.Size(x => x.Voters, 0)
+            & builder.Eq(x => x.AdminDeadlineAt, null)
+            & builder.Lte(x => x.EvidenceCount, 0);
+        var update = Builders<Contract>.Update
+            .Set(x => x.Status, "in_progress")
+            .Set(x => x.Jurors, new List<ObjectId>())
+            .Set(x => x.VotingStartedAt, null)
+            .Set(x => x.VotingEndsAt, null)
+            .Set(x => x.VotingExtended, false)
+            .Set(x => x.ExtraJurorAssigned, false)
+            .Set(x => x.VoteReminderSent, false)
+            .Set(x => x.UpdatedAt, now)
+            .Inc(x => x.Version, 1);
+        return await _context.Contracts.FindOneAndUpdateAsync(
+            filter,
+            update,
+            new FindOneAndUpdateOptions<Contract> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+    }
+
     public async Task<Contract?> TryRegisterVoteAsync(ObjectId id, ObjectId jurorId, bool legit, DateTime now, CancellationToken cancellationToken)
     {
         var builder = Builders<Contract>.Filter;
@@ -157,6 +182,19 @@ public sealed class MongoContractRepository : IContractRepository
         var filter = builder.Eq(x => x.Status, "voting")
             & builder.AnyEq(x => x.Jurors, jurorId)
             & builder.Not(builder.AnyEq(x => x.Voters, jurorId));
+        if (cursor.HasValue)
+        {
+            filter &= builder.Lt(x => x.Id, cursor.Value);
+        }
+
+        var items = await _context.Contracts.Find(filter).SortByDescending(x => x.Id).Limit(limit + 1).ToListAsync(cancellationToken);
+        return (items.Take(limit).ToList(), items.Count > limit);
+    }
+
+    public async Task<(IReadOnlyList<Contract> Items, bool HasMore)> ListShameAsync(ObjectId groupId, int limit, ObjectId? cursor, CancellationToken cancellationToken)
+    {
+        var builder = Builders<Contract>.Filter;
+        var filter = builder.Eq(x => x.GroupId, groupId) & builder.In(x => x.Status, ["cheating", "expired"]);
         if (cursor.HasValue)
         {
             filter &= builder.Lt(x => x.Id, cursor.Value);

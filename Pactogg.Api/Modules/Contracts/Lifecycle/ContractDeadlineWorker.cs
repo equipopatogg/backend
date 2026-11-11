@@ -32,10 +32,12 @@ public sealed class ContractDeadlineWorker : BackgroundService
             {
                 using var scope = _scopes.CreateScope();
                 var lifecycle = scope.ServiceProvider.GetRequiredService<ContractLifecycleService>();
-                var processed = await lifecycle.RunOnceAsync(DateTime.UtcNow, stoppingToken);
+                var now = DateTime.UtcNow;
+                var processed = await lifecycle.RunOnceAsync(now, stoppingToken);
+                processed += await scope.ServiceProvider.GetRequiredService<Pactogg.Api.Modules.Maintenance.MaintenanceService>().RunOnceAsync(now, stoppingToken);
                 if (processed > 0)
                 {
-                    _logger.LogInformation("Ciclo de vida: {Count} retos revisados.", processed);
+                    _logger.LogInformation("Ciclo de vida: {Count} retos, fotos o compromisos revisados.", processed);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

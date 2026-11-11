@@ -48,4 +48,5 @@ public sealed class MongoContext
     public IMongoCollection<Modules.Devices.Device> Devices => Database.GetCollection<Modules.Devices.Device>("devices");
     public IMongoCollection<Modules.Reports.Report> Reports => Database.GetCollection<Modules.Reports.Report>("reports");
     public IMongoCollection<Modules.Reports.UserBlock> Blocks => Database.GetCollection<Modules.Reports.UserBlock>("blocks");
+    public IMongoCollection<Modules.Reputation.Achievement> Achievements => Database.GetCollection<Modules.Reputation.Achievement>("achievements");
 }

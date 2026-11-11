@@ -13,11 +13,25 @@ public sealed class RequireIdempotencyKeyMetadata
     public static readonly RequireIdempotencyKeyMetadata Instance = new();
 }
 
+/// <summary>
+/// 006-R13: Idempotency-Key opcional (crear reto y registrar evidencia con enlace desde un borrador sin conexión).
+/// Sin cabecera el endpoint funciona igual que siempre; con cabecera se aplica la misma deduplicación.
+/// En multipart (fotos) se ignora, porque cada reintento trae otro boundary y el cuerpo nunca coincide.
+/// </summary>
+public sealed class OptionalIdempotencyKeyMetadata
+{
+    public static readonly OptionalIdempotencyKeyMetadata Instance = new();
+}
+
 public static class IdempotencyEndpointExtensions
 {
     public static TBuilder RequireIdempotencyKey<TBuilder>(this TBuilder builder)
         where TBuilder : IEndpointConventionBuilder =>
         builder.WithMetadata(RequireIdempotencyKeyMetadata.Instance);
+
+    public static TBuilder AllowIdempotencyKey<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder =>
+        builder.WithMetadata(OptionalIdempotencyKeyMetadata.Instance);
 }
 
 /// <summary>
@@ -42,7 +56,13 @@ public sealed partial class IdempotencyMiddleware
 
     public async Task InvokeAsync(HttpContext context, ICacheService cache)
     {
-        if (context.GetEndpoint()?.Metadata.GetMetadata<RequireIdempotencyKeyMetadata>() is null)
+        var metadata = context.GetEndpoint()?.Metadata;
+        var required = metadata?.GetMetadata<RequireIdempotencyKeyMetadata>() is not null;
+        var optional = !required
+            && metadata?.GetMetadata<OptionalIdempotencyKeyMetadata>() is not null
+            && !string.IsNullOrWhiteSpace(context.Request.Headers[HeaderName].ToString())
+            && !context.Request.HasFormContentType;
+        if (!required && !optional)
         {
             await _next(context);
             return;

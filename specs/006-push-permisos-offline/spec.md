@@ -1,6 +1,6 @@
 # 006 — Push, permisos y modo sin conexión
 
-**Fecha:** 2026-11-06 · **Estado:** Parte del backend aprobada e implementada salvo 006-T7..T10; parte móvil por especificar con Diego S. · **Sprint:** 3 (fila 65 del Sprint Planning)
+**Fecha:** 2026-11-06 · **Estado:** Parte del backend aprobada e implementada salvo 006-T7 (006-T8..T10 en v0.10.0); parte móvil por especificar con Diego S. · **Sprint:** 3 (fila 65 del Sprint Planning)
 **Responsables:** Diego S. (móvil, dueño de la fila) · David M. (backend).
 **Historias:** ID 69 Aviso de reto recibido · ID 143 Avisos push de retos nuevos · ID 147 Centro de notificaciones · permisos de micrófono, notificaciones y cámara · Room (SQLite) y sincronización sin conexión.
 **Expedientes:** [DEV-01..03 y NOT-04/05](../DEV-01-03-push/spec.md), [NOT-01](../NOT-01-list-notifications/spec.md), [NOT-02](../NOT-02-read-notification/spec.md), [NOT-03](../NOT-03-read-all/spec.md).
@@ -87,10 +87,10 @@ DEV-01 `PUT /devices/me`, DEV-02 `DELETE /devices/me`, DEV-03 `GET`/`PATCH /devi
 | 006-AC7 | R9 | Sin Firebase la API funciona y guarda avisos | Todas las suites corren sin Firebase |
 | 006-AC8 | R10 | Listar, leer, leer todos, borrar; ajeno → 404 | `JuryFlowTests.FulfilledContract_…` (NOT-01..03), `ProfileContractAuditPushTests` (NOT-04) |
 | 006-AC9 | R11 | Índice `ttl_notifications_30d` | `MongoIndexInitializer` y `database/mongo-init.js` |
-| 006-AC10 | R12 | Respuestas con `version` y `updated_at` | Cumple `Contract`; faltan `Group`, `GroupMember`, `Commitment` y `Profile` (006-T10) |
-| 006-AC11 | R13 | Reintento de CON-01 con la misma clave → un solo reto | Pendiente (006-T8) |
+| 006-AC10 | R12 | Respuestas con `version` y `updated_at` | `Contract` con `version` y `updated_at`; `Group`, `GroupMember`, `Commitment` y `Profile` con `updated_at` (F2-D63): `Spec006And009Tests.AC10_MemberCommitmentAndProfile_IncludeUpdatedAt` |
+| 006-AC11 | R13 | Reintento de CON-01 con la misma clave → un solo reto | `Spec006And009Tests.AC11_CreateContract_WithTheSameIdempotencyKey_CreatesOnlyOne_WithoutKeyWorksAsBefore` |
 | 006-AC12 | R14 | Aceptar un reto vencido → 409 | `JuryFlowTests.ContractPastDeadline_…` |
-| 006-AC13 | R15 | Compromiso de 8 días → un aviso al deudor | Pendiente (006-T9) |
+| 006-AC13 | R15 | Compromiso de 8 días → un aviso al deudor | `Spec006And009Tests.AC13_CommitmentPendingMoreThan7Days_NotifiesTheDebtorOnce_AndCountsForTheIndex` |
 
 ## 7. Preguntas abiertas
 
