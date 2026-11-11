@@ -11,7 +11,11 @@ Estado 2026-11-04: corte de evaluación desplegado en AWS (costo cero) 11 endpoi
 | [003 Grupos](003-grupos/spec.md) | IDs 30, 31, 32, 159 | Implementado |
 | [004 Contratos y demo](004-contratos-y-demo/spec.md) | IDs 42, 43, 44, 70, 160 (demo 1 y 5 solo en la app) | Implementado salvo 004-T8 (salida del creador) |
 | [005 Contrato por voz con IA](005-contrato-por-voz/spec.md) | IDs 56–60, CON-08 | Spec lista; código pendiente del modelo de IA (Q-007) |
-| [006 Push, permisos y sin conexión](006-push-permisos-offline/spec.md) | IDs 69, 143, 147, permisos, Room | Backend implementado salvo 006-T7..T10; parte móvil pendiente |
+| [006 Push, permisos y sin conexión](006-push-permisos-offline/spec.md) | IDs 69, 143, 147, permisos, Room | Backend implementado salvo 006-T7..T10; parte móvil en borrador |
+| [007 Evidencias y moderación](007-evidencias-y-moderacion/spec.md) | Evidencias, Fama, reportes (ID 149, 153) | Aprobada 2026-11-07; faltan EVI-04/05/06 |
+| [008 Jurado, puntos y resultados](008-jurado-puntos-resultados/spec.md) | Jurado, puntos, ranking, muros, logros, Índice (ID 25) | Aprobada 2026-11-07; faltan ACH-02/04 e Índice |
+| [009 Compromisos, landing y Google Play](009-compromisos-landing-play/spec.md) | ID 124, 125, 129 | Borrador para Kevin |
+| [010 Torneos entre grupos](010-torneos/spec.md) | Torneos y partidas (ID 115) | Aprobada 2026-11-07; 15 endpoints por hacer |
 
 [Validación SDD 001–003](validacion-001-003.md) (2026-11-06): las tres specs cumplen CLARIFICACION #138; aprobadas por el PO; falta la revisión de Kevin y José.
 

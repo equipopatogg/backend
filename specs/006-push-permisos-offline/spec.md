@@ -50,6 +50,19 @@ Que cada persona se entere a tiempo de lo que le toca (un reto, un voto, un resu
 | 006-R13 | Cuando la app reenvíe un borrador guardado sin conexión (crear reto o registrar un enlace de evidencia) con una `Idempotency-Key`, el sistema deberá devolver la primera respuesta en los reintentos en vez de crear un duplicado. | CON-01, EVI-02 |
 | 006-R14 | Si una acción guardada ya no es válida al volver internet (por ejemplo, el reto venció), entonces el sistema deberá responder con su código de error normal (`409`, `422`) para que la app la descarte y avise con el motivo. | Todas |
 
+## 3b. Parte móvil (borrador para Diego S.)
+
+| ID | Requisito |
+|---|---|
+| 006-M1 | Cuando la persona vaya a dictar, la app deberá pedir el permiso de micrófono en ese momento, explicando para qué; si lo niega, ofrecer escribir el reto a mano. |
+| 006-M2 | Cuando la persona inicie sesión en Android 13 o más, la app deberá pedir el permiso de notificaciones con una pantalla previa; si lo niega, el centro de avisos sigue funcionando. |
+| 006-M3 | Cuando la persona suba una foto, la app deberá usar el selector o la cámara del sistema (sin CameraX), sin pedir permiso de almacenamiento. |
+| 006-M4 | Mientras no haya conexión, la app deberá mostrar desde Room la última copia del tablero del grupo activo, compromisos, miembros y perfil, con una marca de "sin conexión". |
+| 006-M5 | Mientras no haya conexión, la app deberá permitir guardar borradores de retos y enlaces de evidencia, y bloquear iniciar sesión, aceptar con fianza, votar, subir fotos, reportar resultados de torneo y eliminar la cuenta. |
+| 006-M6 | Cuando vuelva la conexión, WorkManager deberá enviar los borradores con `Idempotency-Key` y hasta 5 reintentos (30 s, 1, 2, 5 y 15 min); si el servidor rechaza una acción, la app la descarta y avisa con el motivo (marca en el elemento, aviso y mensaje al abrir). |
+| 006-M7 | Cuando la versión del servidor sea distinta a la copia local, la app deberá quedarse con la del servidor y mostrar qué cambió. |
+| 006-M8 | Al iniciar sesión, la app deberá registrar el token de FCM (DEV-01); al cerrar sesión, quitarlo (DEV-02) y borrar la copia local. |
+
 ## 4. Requisitos no funcionales
 
 - FCM HTTP v1 sin SDK: token OAuth2 reutilizado ~55 minutos; cola acotada en memoria; la petición HTTP no espera al push.
