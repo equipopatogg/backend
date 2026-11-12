@@ -15,6 +15,7 @@ tags:
   - name: Contracts
   - name: Evidence
   - name: Tournaments
+  - name: Matches
   - name: Votes
   - name: Points
   - name: Commitments
@@ -1148,6 +1149,297 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Tournaments]
+      operationId: createTournament
+      summary: Crear torneo entre grupos (TOR-01)
+      description: >-
+        Solo un administrador del grupo (spec 010-R1). Su grupo queda inscrito y él paga la inscripción de su saldo en ese grupo
+        (010-D1). Un torneo abierto o en curso por grupo organizador; si ya hay uno, 409 TOURNAMENT_ALREADY_ACTIVE. Sin saldo, 402.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTournamentRequest' }
+      responses:
+        '201':
+          description: Torneo creado en open, con su código
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tournament' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientPoints' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/tournaments/{id}:
+    get:
+      tags: [Tournaments]
+      operationId: getTournament
+      summary: Detalle del torneo (TOR-03)
+      description: >-
+        Grupos inscritos (nombre y número de miembros, sin datos personales), bolsa, estado y bracket (spec 010-R2).
+        Con el id solo lo ven los miembros de grupos inscritos; con el código de 6 caracteres cualquier persona con sesión ve
+        una vista previa para decidir si inscribe a su grupo (F2-D67). El campo code solo llega al organizador y a los
+        administradores de grupos inscritos mientras el torneo está abierto.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Torneo
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tournament' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Tournaments]
+      operationId: updateTournament
+      summary: Editar torneo abierto (TOR-04)
+      description: Solo el organizador y solo en open (010-R3). max_groups nunca menor que los inscritos. La inscripción no se cambia.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTournamentRequest' }
+      responses:
+        '200':
+          description: Torneo actualizado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tournament' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/tournaments/{id}/cancel:
+    post:
+      tags: [Tournaments]
+      operationId: cancelTournament
+      summary: Cancelar torneo (TOR-05)
+      description: >-
+        Solo el organizador, en open o in_progress (010-R4). Devuelve todas las inscripciones con movimientos
+        tournament_entry positivos (F2-D66), cancela las partidas abiertas y avisa a los grupos (tournament_cancelled).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Torneo cancelado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tournament' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/tournaments/{id}/join:
+    post:
+      tags: [Tournaments]
+      operationId: joinTournament
+      summary: Inscribir a mi grupo (TOR-06)
+      description: >-
+        Un administrador del grupo lo inscribe y paga la inscripción de su saldo en ese grupo (010-R5, 010-D2).
+        La ruta acepta el id (entonces code es obligatorio en el cuerpo) o directamente el código. Código incorrecto → 404.
+        Sin saldo 402; ya inscrito 409 ALREADY_IN_TOURNAMENT; lleno 409 TOURNAMENT_FULL; no abierto 409 TOURNAMENT_NOT_OPEN.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JoinTournamentRequest' }
+      responses:
+        '200':
+          description: Grupo inscrito
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tournament' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientPoints' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Tournaments]
+      operationId: leaveTournament
+      summary: Sacar a mi grupo del torneo (TOR-07)
+      description: >-
+        Un administrador del grupo, solo en open (010-R6). Se devuelve la inscripción a quien la pagó. El grupo organizador
+        no puede salir (409 ORGANIZER_GROUP_CANNOT_LEAVE); el organizador cancela el torneo.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+        - { name: group_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/tournaments/{id}/start:
+    post:
+      tags: [Tournaments]
+      operationId: startTournament
+      summary: Iniciar torneo y generar el bracket (TOR-08)
+      description: >-
+        Solo el organizador, con al menos 2 grupos (si no, 409 NOT_ENOUGH_GROUPS). Cierra inscripciones, sortea el orden,
+        completa con byes hasta 2, 4, 8 o 16 lugares (los byes avanzan solos) y crea todas las partidas (010-R7).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Torneo en curso con su bracket
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tournament' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/tournaments/{id}/bracket:
+    get:
+      tags: [Matches]
+      operationId: getTournamentBracket
+      summary: Bracket completo (MAT-01)
+      description: Rondas y partidas para los miembros de grupos inscritos (010-R9). Caché 10 s.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id del torneo (24 hex) o, donde se indica, el código de 6 caracteres.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Bracket
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Bracket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/matches/{id}:
+    get:
+      tags: [Matches]
+      operationId: getMatch
+      summary: Detalle de una partida (MAT-02)
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Partida
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Match' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/me/matches/next:
+    get:
+      tags: [Matches]
+      operationId: getMyNextMatch
+      summary: Mi siguiente partida (MAT-07)
+      description: >-
+        La partida pendiente con los dos grupos definidos de la ronda más baja en la que juega alguno de mis grupos (010-R15).
+        Si no hay, responde {"data":null}.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Siguiente partida o null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    nullable: true
+                    allOf:
+                      - $ref: '#/components/schemas/NextMatch'
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/me/votes/pending:
     get:
       tags: [Votes]
@@ -2607,25 +2899,67 @@ components:
         source_id: { type: string }
         group_id: { type: string, nullable: true }
         earned_at: { type: string, format: date-time }
+    CreateTournamentRequest:
+      type: object
+      required: [game, max_groups, scheduled_at]
+      properties:
+        game: { type: string, minLength: 1, maxLength: 60 }
+        format: { type: string, enum: [single_elimination], default: single_elimination }
+        max_groups: { type: integer, enum: [4, 8, 16] }
+        entry_points: { type: integer, minimum: 0, maximum: 500, default: 0 }
+        scheduled_at: { type: string, format: date-time, description: Fecha futura }
+    UpdateTournamentRequest:
+      type: object
+      properties:
+        game: { type: string, minLength: 1, maxLength: 60 }
+        scheduled_at: { type: string, format: date-time }
+        max_groups: { type: integer, enum: [4, 8, 16] }
+    JoinTournamentRequest:
+      type: object
+      required: [group_id]
+      properties:
+        group_id: { type: string }
+        code: { type: string, minLength: 6, maxLength: 6, description: Obligatorio si la ruta lleva el id del torneo }
+    TournamentGroup:
+      type: object
+      properties:
+        group_id: { type: string }
+        name: { type: string }
+        member_count: { type: integer }
+        is_organizer: { type: boolean }
     Tournament:
       type: object
       properties:
         id: { type: string }
-        group_id: { type: string }
+        group_id: { type: string, description: Grupo organizador }
+        organizer_id: { type: string }
         game: { type: string }
         format: { type: string }
+        max_groups: { type: integer, enum: [4, 8, 16] }
         entry_points: { type: integer }
         prize_pool: { type: integer }
         scheduled_at: { type: string, format: date-time }
         participants:
           type: array
           items: { type: string }
-        status: { type: string }
+        groups:
+          type: array
+          description: Solo en detalle, crear, editar, inscribir, iniciar y cancelar
+          items: { $ref: '#/components/schemas/TournamentGroup' }
+        status: { type: string, enum: [open, in_progress, finished, cancelled] }
         winner_group_id: { type: string, nullable: true }
+        code: { type: string, description: Solo para el organizador y administradores inscritos mientras está abierto }
+        started_at: { type: string, format: date-time, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        cancel_reason: { type: string, enum: [by_organizer, not_enough_groups], nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
         bracket: { $ref: '#/components/schemas/Bracket' }
     Bracket:
       type: object
       properties:
+        size: { type: integer, description: Lugares del bracket (2, 4, 8 o 16); 0 antes de iniciar }
+        rounds: { type: integer }
         matches:
           type: array
           items: { $ref: '#/components/schemas/Match' }
@@ -2633,6 +2967,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        tournament_id: { type: string }
         round: { type: integer }
         position: { type: integer }
         p1_group_id: { type: string, nullable: true }
@@ -2640,4 +2975,15 @@ components:
         p1_score: { type: integer, nullable: true }
         p2_score: { type: integer, nullable: true }
         winner_group_id: { type: string, nullable: true }
-        status: { type: string }
+        status: { type: string, enum: [pending, reported, confirmed, disputed, bye, cancelled] }
+        next_match_id: { type: string, nullable: true }
+        reported_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time }
+    NextMatch:
+      type: object
+      properties:
+        match: { $ref: '#/components/schemas/Match' }
+        my_group_id: { type: string }
+        opponent_group_id: { type: string, nullable: true }
+        game: { type: string }
+        scheduled_at: { type: string, format: date-time }

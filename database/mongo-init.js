@@ -160,7 +160,16 @@ const indexes = {
     [{ created_at: 1 }, { name: "ttl_notifications_30d", expireAfterSeconds: 60 * 60 * 24 * 30 }],
     [{ dedupe_key: 1 }, { name: "ux_notifications_dedupe", unique: true, partialFilterExpression: { dedupe_key: { $type: "string" } } }]
   ],
-  tournaments: [[{ group_id: 1, status: 1, scheduled_at: 1 }, { name: "ix_tournaments_group_status_scheduled" }]],
+  tournaments: [
+    [{ group_id: 1, status: 1, scheduled_at: 1 }, { name: "ix_tournaments_group_status_scheduled" }],
+    [{ code: 1 }, { name: "ux_tournaments_code", unique: true, partialFilterExpression: { code: { $type: "string" } } }],
+    [{ participants: 1, _id: -1 }, { name: "ix_tournaments_participants" }]
+  ],
+  matches: [
+    [{ tournament_id: 1, round: 1, position: 1 }, { name: "ix_matches_tournament" }],
+    [{ status: 1, p1_group_id: 1, round: 1 }, { name: "ix_matches_status_p1" }],
+    [{ status: 1, p2_group_id: 1, round: 1 }, { name: "ix_matches_status_p2" }]
+  ],
   audit_events: [[{ group_id: 1, created_at: -1 }, { name: "ix_audit_group_created" }], [{ group_id: 1, _id: -1 }, { name: "ix_audit_group_id" }]],
   reports: [
     [{ reporter_id: 1, target_type: 1, target_id: 1 }, { name: "ux_reports_reporter_target", unique: true }],

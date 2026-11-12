@@ -141,6 +141,35 @@ public sealed class MongoIndexInitializer : BackgroundService
                 new CreateIndexOptions { Name = "ix_tournaments_group_status_scheduled" }),
             cancellationToken: cancellationToken);
 
+        // Spec 010: código único, torneos por grupo inscrito y partidas por torneo y por grupo.
+        await _context.Tournaments.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Tournaments.Domain.Tournament>(
+                Builders<Modules.Tournaments.Domain.Tournament>.IndexKeys.Ascending(x => x.Code),
+                new CreateIndexOptions<Modules.Tournaments.Domain.Tournament>
+                {
+                    Name = "ux_tournaments_code",
+                    Unique = true,
+                    PartialFilterExpression = Builders<Modules.Tournaments.Domain.Tournament>.Filter.Type(x => x.Code, BsonType.String)
+                }),
+            new CreateIndexModel<Modules.Tournaments.Domain.Tournament>(
+                Builders<Modules.Tournaments.Domain.Tournament>.IndexKeys.Ascending(x => x.Participants).Descending(x => x.Id),
+                new CreateIndexOptions { Name = "ix_tournaments_participants" })
+        ], cancellationToken);
+
+        await _context.Matches.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<Modules.Tournaments.Domain.Match>(
+                Builders<Modules.Tournaments.Domain.Match>.IndexKeys.Ascending(x => x.TournamentId).Ascending(x => x.Round).Ascending(x => x.Position),
+                new CreateIndexOptions { Name = "ix_matches_tournament" }),
+            new CreateIndexModel<Modules.Tournaments.Domain.Match>(
+                Builders<Modules.Tournaments.Domain.Match>.IndexKeys.Ascending(x => x.Status).Ascending(x => x.P1GroupId).Ascending(x => x.Round),
+                new CreateIndexOptions { Name = "ix_matches_status_p1" }),
+            new CreateIndexModel<Modules.Tournaments.Domain.Match>(
+                Builders<Modules.Tournaments.Domain.Match>.IndexKeys.Ascending(x => x.Status).Ascending(x => x.P2GroupId).Ascending(x => x.Round),
+                new CreateIndexOptions { Name = "ix_matches_status_p2" })
+        ], cancellationToken);
+
         await _context.Votes.Indexes.CreateOneAsync(
             new CreateIndexModel<Modules.Votes.Domain.Vote>(
                 Builders<Modules.Votes.Domain.Vote>.IndexKeys.Ascending(x => x.ContractId).Ascending(x => x.JurorId),

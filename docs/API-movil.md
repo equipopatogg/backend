@@ -97,7 +97,7 @@ curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
 
 ## 6. Lo que todavía NO existe
 
-Crear torneos y partidas (TOR-01, TOR-03..09, MAT-01..07) y contrato por voz con IA (CON-08, falta la clave del modelo). El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
+Reportar, confirmar, disputar y resolver partidas (MAT-03..06), invitar grupos a un torneo (TOR-09) y contrato por voz con IA (CON-08, falta la clave del modelo). El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
 
 ## 7. Reglas que la app debe respetar
 
@@ -158,3 +158,33 @@ Crear torneos y partidas (TOR-01, TOR-03..09, MAT-01..07) y contrato por voz con
 - **Borradores sin conexión:** `POST /groups/{gid}/contracts` y `POST /contracts/{id}/evidence` (solo enlace) aceptan un `Idempotency-Key` **opcional**. Guarden la clave con el borrador y reenvíen con la misma: el reintento devuelve el mismo reto (`Idempotent-Replayed: true`) en lugar de crear otro.
 - **`updated_at`** ahora viene también en miembros (`GET /groups/{id}/members`), compromisos y `GET /users/me`. Úsenlo para saber si su copia local está vieja: siempre gana el servidor.
 - **Moderación en español:** condición, recompensa, juego, nombre de grupo, apodo y comentarios con groserías comunes en español dan `422 CONTENT_REJECTED`. La lista está en el servidor.
+
+## Cambios 0.11.0 (2026-11-11) — Torneos, parte 1 (spec 010)
+
+**Cómo funciona:** un grupo organiza el torneo y otros grupos se inscriben como equipos. Cada partida es 1 contra 1 entre un representante de cada grupo, por eliminación directa.
+
+- **Crear:** `POST /groups/{gid}/tournaments` con `{ game, max_groups: 4|8|16, entry_points: 0..500, scheduled_at }` → `201`.
+  - Solo puede crearlo un administrador del grupo. Su grupo queda inscrito y él paga la inscripción de su saldo.
+  - La respuesta trae `code` (6 letras): ese código se comparte por fuera de la app (WhatsApp, Discord) a los otros grupos.
+  - Un grupo solo puede organizar un torneo abierto o en curso a la vez (`409 TOURNAMENT_ALREADY_ACTIVE`). Sin saldo, `402`.
+- **Ver con el código:** `GET /tournaments/{code}` muestra una vista previa a cualquiera con sesión, para decidir si inscribe a su grupo.
+- **Detalle:** `GET /tournaments/{id}` es solo para miembros de grupos inscritos (si no, `403`).
+  - Trae `groups: [{ group_id, name, member_count, is_organizer }]`, `prize_pool`, `status` y `bracket`.
+  - `code` solo llega al organizador y a administradores inscritos mientras está `open`.
+- **Inscribirse:** `POST /tournaments/{code}/join` con `{ group_id }` y la cabecera `Idempotency-Key` (obligatoria) → `200`.
+  - Solo un administrador de ese grupo, que paga de su saldo en ese grupo.
+  - También sirve `POST /tournaments/{id}/join` con `{ group_id, code }`. Si el código está mal, `404`.
+  - Errores: `402` sin saldo, `409 ALREADY_IN_TOURNAMENT`, `409 TOURNAMENT_FULL`, `409 TOURNAMENT_NOT_OPEN`.
+- **Salir:** `DELETE /tournaments/{id}/join?group_id=…` → `204` y se devuelve la inscripción. Solo funciona antes de iniciar. El grupo organizador no puede salir (`409 ORGANIZER_GROUP_CANNOT_LEAVE`); tiene que cancelar.
+- **Editar:** `PATCH /tournaments/{id}` con `{ game?, scheduled_at?, max_groups? }`. Solo el organizador y solo en `open`; si no, `409`.
+- **Cancelar:** `POST /tournaments/{id}/cancel`. Solo el organizador. Todos recuperan su inscripción y les llega el aviso `tournament_cancelled`.
+- **Iniciar:** `POST /tournaments/{id}/start`. Solo el organizador, con al menos 2 grupos (si no, `409 NOT_ENOUGH_GROUPS`).
+  - Sortea el orden y arma el bracket. Si faltan grupos para llenar 4, 8 o 16 lugares, los que no tienen rival pasan solos a la siguiente ronda (`status: "bye"`).
+  - Avisa a todos con `tournament_started`.
+- **Bracket:** `GET /tournaments/{id}/bracket` → `{ size, rounds, matches: [...] }`.
+  - Cada partida trae `round`, `position`, `p1_group_id`, `p2_group_id`, `status` y `next_match_id`.
+  - Para dibujarlo: `round` es la columna y `position` el orden de arriba a abajo.
+- **Una partida:** `GET /matches/{id}`.
+- **Mi siguiente partida:** `GET /me/matches/next` → `{ match, my_group_id, opponent_group_id, game, scheduled_at }`, o `{ "data": null }` si no hay ninguna (por ejemplo, si tu grupo pasó por bye y espera rival).
+- **Puntos:** inscribirse resta puntos con un movimiento `tournament_entry` negativo. Salir o cancelar devuelve con un `tournament_entry` positivo. Se ve en `GET /groups/{id}/points?type=tournament_entry`.
+- **Todavía no:** reportar resultado, confirmar, disputar, premio al campeón e invitar grupos desde la app. Llegan en la parte 2.

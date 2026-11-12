@@ -56,6 +56,15 @@ public static class ErrorCodes
     public const string NotCommitmentParty = "NOT_COMMITMENT_PARTY";
     public const string VotingStarted = "VOTING_STARTED";
     public const string NotEvidenceOwner = "NOT_EVIDENCE_OWNER";
+    public const string TournamentNotOpen = "TOURNAMENT_NOT_OPEN";
+    public const string TournamentFull = "TOURNAMENT_FULL";
+    public const string AlreadyInTournament = "ALREADY_IN_TOURNAMENT";
+    public const string NotInTournament = "NOT_IN_TOURNAMENT";
+    public const string NotTournamentOrganizer = "NOT_TOURNAMENT_ORGANIZER";
+    public const string NotTournamentMember = "NOT_TOURNAMENT_MEMBER";
+    public const string OrganizerGroupCannotLeave = "ORGANIZER_GROUP_CANNOT_LEAVE";
+    public const string NotEnoughGroups = "NOT_ENOUGH_GROUPS";
+    public const string TournamentAlreadyActive = "TOURNAMENT_ALREADY_ACTIVE";
     public const string InvalidCommitmentState = "INVALID_COMMITMENT_STATE";
     public const string CannotAcceptOwnContract = "CANNOT_ACCEPT_OWN_CONTRACT";
     public const string ModerationUnavailable = "MODERATION_UNAVAILABLE";

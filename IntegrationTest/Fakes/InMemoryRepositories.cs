@@ -1070,8 +1070,24 @@ public sealed class InMemoryEvidenceRepository : IEvidenceRepository
 public sealed class InMemoryTournamentRepository : ITournamentRepository
 {
     private readonly ConcurrentDictionary<ObjectId, Tournament> _tournaments = new();
+    private readonly InMemoryGroupMemberRepository? _members;
+    private readonly InMemoryPointsLedgerRepository? _ledger;
+    private readonly InMemoryMatchRepository? _matches;
+
+    public InMemoryTournamentRepository()
+    {
+    }
+
+    public InMemoryTournamentRepository(InMemoryGroupMemberRepository members, InMemoryPointsLedgerRepository ledger, InMemoryMatchRepository matches)
+    {
+        _members = members;
+        _ledger = ledger;
+        _matches = matches;
+    }
 
     public void Add(Tournament tournament) => _tournaments[tournament.Id] = tournament;
+
+    public Tournament Get(ObjectId id) => _tournaments[id];
 
     public Task<(IReadOnlyList<Tournament> Items, bool HasMore)> ListForGroupsAsync(
         IReadOnlyCollection<ObjectId> groupIds,
@@ -1082,7 +1098,7 @@ public sealed class InMemoryTournamentRepository : ITournamentRepository
         ObjectId? cursor,
         CancellationToken cancellationToken)
     {
-        var query = _tournaments.Values.Where(x => groupIds.Contains(x.GroupId));
+        var query = _tournaments.Values.Where(x => groupIds.Contains(x.GroupId) || x.Participants.Any(groupIds.Contains));
         if (!string.IsNullOrWhiteSpace(status))
         {
             query = query.Where(x => x.Status == status);
@@ -1095,7 +1111,7 @@ public sealed class InMemoryTournamentRepository : ITournamentRepository
 
         if (groupId.HasValue)
         {
-            query = query.Where(x => x.GroupId == groupId.Value);
+            query = query.Where(x => x.GroupId == groupId.Value || x.Participants.Contains(groupId.Value));
         }
 
         if (cursor.HasValue)
@@ -1106,22 +1122,267 @@ public sealed class InMemoryTournamentRepository : ITournamentRepository
         var items = query.OrderByDescending(x => x.Id).Take(limit + 1).ToList();
         return Task.FromResult<(IReadOnlyList<Tournament>, bool)>((items.Take(limit).ToList(), items.Count > limit));
     }
+
+    public Task<Tournament?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken) =>
+        Task.FromResult(_tournaments.TryGetValue(id, out var t) ? Clone(t) : null);
+
+    public Task<Tournament?> GetByCodeAsync(string code, CancellationToken cancellationToken) =>
+        Task.FromResult(_tournaments.Values.Where(x => x.Code == code).Select(Clone).FirstOrDefault());
+
+    public Task<bool> CodeExistsAsync(string code, CancellationToken cancellationToken) =>
+        Task.FromResult(_tournaments.Values.Any(x => x.Code == code));
+
+    public Task<bool> HasActiveForOrganizerGroupAsync(ObjectId groupId, CancellationToken cancellationToken) =>
+        Task.FromResult(_tournaments.Values.Any(x => x.GroupId == groupId && x.Status is "open" or "in_progress"));
+
+    public Task<TournamentWriteResult> CreateAsync(Tournament tournament, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (tournament.EntryPoints > 0 && !Debit(tournament.GroupId, tournament.OrganizerId, tournament.EntryPoints, tournament.Id, now))
+            {
+                return Task.FromResult(new TournamentWriteResult(TournamentWriteOutcome.InsufficientPoints, null));
+            }
+
+            _tournaments[tournament.Id] = Clone(tournament);
+            return Task.FromResult(new TournamentWriteResult(TournamentWriteOutcome.Ok, Clone(tournament)));
+        }
+    }
+
+    public Task<TournamentWriteResult> JoinAsync(ObjectId id, int expectedMaxGroups, int amount, ObjectId groupId, ObjectId payerId, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (!_tournaments.TryGetValue(id, out var t) || t.Status != "open" || t.MaxGroups != expectedMaxGroups || t.EntryPoints != amount
+                || t.Participants.Contains(groupId) || t.Participants.Count >= expectedMaxGroups)
+            {
+                return Task.FromResult(new TournamentWriteResult(TournamentWriteOutcome.StateChanged, null));
+            }
+
+            if (amount > 0 && !Debit(groupId, payerId, amount, id, now))
+            {
+                return Task.FromResult(new TournamentWriteResult(TournamentWriteOutcome.InsufficientPoints, null));
+            }
+
+            t.Participants.Add(groupId);
+            t.Entries.Add(new TournamentEntry { GroupId = groupId, PaidBy = payerId, Amount = amount, Status = "active", JoinedAt = now });
+            t.PrizePool += amount;
+            t.UpdatedAt = now;
+            return Task.FromResult(new TournamentWriteResult(TournamentWriteOutcome.Ok, Clone(t)));
+        }
+    }
+
+    public Task<Tournament?> LeaveAsync(ObjectId id, ObjectId groupId, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (!_tournaments.TryGetValue(id, out var t) || t.Status != "open" || t.GroupId == groupId || !t.Participants.Contains(groupId))
+            {
+                return Task.FromResult<Tournament?>(null);
+            }
+
+            var entry = t.Entries.FirstOrDefault(e => e.GroupId == groupId && e.Status == "active");
+            if (entry is null)
+            {
+                return Task.FromResult<Tournament?>(null);
+            }
+
+            t.Participants.Remove(groupId);
+            entry.Status = "refunded";
+            t.PrizePool -= entry.Amount;
+            t.UpdatedAt = now;
+            if (entry.Amount > 0)
+            {
+                Credit(entry.GroupId, entry.PaidBy, entry.Amount, id, now);
+            }
+
+            return Task.FromResult<Tournament?>(Clone(t));
+        }
+    }
+
+    public Task<Tournament?> UpdateAsync(ObjectId id, string game, DateTime scheduledAt, int maxGroups, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (!_tournaments.TryGetValue(id, out var t) || t.Status != "open" || t.Participants.Count > maxGroups)
+            {
+                return Task.FromResult<Tournament?>(null);
+            }
+
+            t.Game = game;
+            t.ScheduledAt = scheduledAt;
+            t.MaxGroups = maxGroups;
+            t.UpdatedAt = now;
+            return Task.FromResult<Tournament?>(Clone(t));
+        }
+    }
+
+    public Task<Tournament?> CancelAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (!_tournaments.TryGetValue(id, out var t) || t.Status is not ("open" or "in_progress"))
+            {
+                return Task.FromResult<Tournament?>(null);
+            }
+
+            foreach (var entry in t.Entries.Where(e => e.Status == "active"))
+            {
+                entry.Status = "refunded";
+                if (entry.Amount > 0)
+                {
+                    Credit(entry.GroupId, entry.PaidBy, entry.Amount, id, now);
+                }
+            }
+
+            t.Status = "cancelled";
+            t.CancelledAt = now;
+            t.CancelReason = reason;
+            t.PrizePool = 0;
+            t.UpdatedAt = now;
+            _matches?.CancelOpen(id, now);
+            return Task.FromResult<Tournament?>(Clone(t));
+        }
+    }
+
+    public Task<Tournament?> StartAsync(ObjectId id, IReadOnlyList<ObjectId> expectedParticipants, IReadOnlyList<Match> matches, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (!_tournaments.TryGetValue(id, out var t) || t.Status != "open" || !t.Participants.SequenceEqual(expectedParticipants))
+            {
+                return Task.FromResult<Tournament?>(null);
+            }
+
+            t.Status = "in_progress";
+            t.StartedAt = now;
+            t.UpdatedAt = now;
+            foreach (var match in matches)
+            {
+                _matches?.Add(match);
+            }
+
+            return Task.FromResult<Tournament?>(Clone(t));
+        }
+    }
+
+    private bool Debit(ObjectId groupId, ObjectId userId, int amount, ObjectId tournamentId, DateTime now)
+    {
+        var member = _members?.Find(groupId, userId);
+        if (member is null || member.Status != "active" || member.PointsBalance < amount)
+        {
+            return false;
+        }
+
+        member.PointsBalance -= amount;
+        member.UpdatedAt = now;
+        AddLedger(groupId, userId, -amount, member.PointsBalance, tournamentId, now);
+        return true;
+    }
+
+    private void Credit(ObjectId groupId, ObjectId userId, int amount, ObjectId tournamentId, DateTime now)
+    {
+        var member = _members?.Find(groupId, userId);
+        if (member is null)
+        {
+            return;
+        }
+
+        member.PointsBalance += amount;
+        member.UpdatedAt = now;
+        AddLedger(groupId, userId, amount, member.PointsBalance, tournamentId, now);
+    }
+
+    private void AddLedger(ObjectId groupId, ObjectId userId, int amount, int balanceAfter, ObjectId tournamentId, DateTime now) =>
+        _ledger?.Entries.Add(new PointsLedgerEntry
+        {
+            Id = ObjectId.GenerateNewId(),
+            GroupId = groupId,
+            UserId = userId,
+            Type = "tournament_entry",
+            Amount = amount,
+            RefType = "tournament",
+            RefId = tournamentId,
+            BalanceAfter = balanceAfter,
+            CreatedAt = now
+        });
+
+    private static Tournament Clone(Tournament t) => new()
+    {
+        Id = t.Id, GroupId = t.GroupId, OrganizerId = t.OrganizerId, Code = t.Code, MaxGroups = t.MaxGroups, Game = t.Game, Format = t.Format,
+        EntryPoints = t.EntryPoints, PrizePool = t.PrizePool, ScheduledAt = t.ScheduledAt, Participants = [.. t.Participants],
+        Entries = t.Entries.Select(e => new TournamentEntry { GroupId = e.GroupId, PaidBy = e.PaidBy, Amount = e.Amount, Status = e.Status, JoinedAt = e.JoinedAt }).ToList(),
+        Status = t.Status, WinnerGroupId = t.WinnerGroupId, StartedAt = t.StartedAt, FinishedAt = t.FinishedAt, CancelledAt = t.CancelledAt,
+        CancelReason = t.CancelReason, CreatedAt = t.CreatedAt, UpdatedAt = t.UpdatedAt
+    };
 }
 
 public sealed class InMemoryMatchRepository : IMatchRepository
 {
     private readonly List<Match> _matches = [];
 
-    public void Add(Match match) => _matches.Add(match);
+    public void Add(Match match)
+    {
+        lock (_matches)
+        {
+            _matches.Add(match);
+        }
+    }
+
+    public IReadOnlyList<Match> ForTournament(ObjectId tournamentId)
+    {
+        lock (_matches)
+        {
+            return _matches.Where(x => x.TournamentId == tournamentId).OrderBy(x => x.Round).ThenBy(x => x.Position).ToList();
+        }
+    }
+
+    public void CancelOpen(ObjectId tournamentId, DateTime now)
+    {
+        lock (_matches)
+        {
+            foreach (var match in _matches.Where(x => x.TournamentId == tournamentId && x.Status is not ("confirmed" or "bye")))
+            {
+                match.Status = "cancelled";
+                match.UpdatedAt = now;
+            }
+        }
+    }
 
     public Task<IReadOnlyList<Match>> ListForTournamentIdsAsync(
         IReadOnlyCollection<ObjectId> tournamentIds,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Match>>(_matches
-            .Where(x => tournamentIds.Contains(x.TournamentId))
-            .OrderBy(x => x.Round)
-            .ThenBy(x => x.Position)
-            .ToList());
+        CancellationToken cancellationToken)
+    {
+        lock (_matches)
+        {
+            return Task.FromResult<IReadOnlyList<Match>>(_matches
+                .Where(x => tournamentIds.Contains(x.TournamentId))
+                .OrderBy(x => x.Round)
+                .ThenBy(x => x.Position)
+                .ToList());
+        }
+    }
+
+    public Task<Match?> GetByIdAsync(ObjectId id, CancellationToken cancellationToken)
+    {
+        lock (_matches)
+        {
+            return Task.FromResult(_matches.FirstOrDefault(x => x.Id == id));
+        }
+    }
+
+    public Task<Match?> FindNextForGroupsAsync(IReadOnlyCollection<ObjectId> groupIds, CancellationToken cancellationToken)
+    {
+        lock (_matches)
+        {
+            return Task.FromResult(_matches
+                .Where(x => x.Status == "pending" && x.P1GroupId is not null && x.P2GroupId is not null
+                    && (groupIds.Contains(x.P1GroupId.Value) || groupIds.Contains(x.P2GroupId.Value)))
+                .OrderBy(x => x.Round)
+                .ThenBy(x => x.Id)
+                .FirstOrDefault());
+        }
+    }
 }
 
 public sealed class FakeAuditService : IAuditService, IAuditReader
