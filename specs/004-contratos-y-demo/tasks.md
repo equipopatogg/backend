@@ -10,6 +10,7 @@
 - [x] 004-T6 — Aviso de reto recibido y auditoría (ID 69, 160); 004-R6, R15; 004-AC8, AC16.
 - [x] 004-T7 — Moderar también el juego al crear y editar; 004-R4; 004-AC5 (2026-11-06).
 - [x] 004-T8 — Al salir o ser expulsado, cancelar sus retos activos y devolver fianzas (CLARIFICACION #37); hecho con MEM-04/MEM-05 (v0.9.0, `GroupAdminTests.KickedMember_…`).
+- [x] 004-T10 — Cancelación por el administrador con devolución de fianza (Q-022, 2026-11-11); 004-R16; 004-AC17.
 - [ ] 004-T9 — Demo de 4 pasos + cierre en la app, sin backend (ID 1, 5); responsables de móvil.
 
 ## Definición de terminado

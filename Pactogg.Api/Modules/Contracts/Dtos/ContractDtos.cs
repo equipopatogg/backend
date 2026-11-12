@@ -78,6 +78,13 @@ public sealed class ContractResponse
     public int? MyPoints { get; init; }
 }
 
+/// <summary>CON-09 (spec 004-R16): motivo de la cancelación por el administrador.</summary>
+public sealed class AdminCancelContractRequest
+{
+    [Required, StringLength(140, MinimumLength = 5)]
+    public string Reason { get; set; } = string.Empty;
+}
+
 public sealed class ContractActionRequest
 {
     /// <summary>Versión que la app vio; si otro la cambió antes, 409. Opcional.</summary>

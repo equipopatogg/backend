@@ -29,7 +29,7 @@
 | Q-019 | Longitudes de apodo y nombre de grupo | Medio | Resuelta F2-D50 |
 | Q-020 | Timing de login para correo inexistente | Medio | Resuelta F2-D51 |
 | Q-021 | Moderación del nombre de grupo | Medio | Resuelta F2-D52 |
-| Q-022 | Cancelación de un reto aceptado por el administrador | Medio | Abierta |
+| Q-022 | Cancelación de un reto aceptado por el administrador | Medio | Resuelta 2026-11-11 |
 
 ---
 
@@ -420,7 +420,7 @@ Si el equipo prefiere una sola llamada, `POST /contracts/{id}/evidence` acepta `
 
 **Propuesta:** `POST /contracts/{id}/cancel` solo para `admin`, desde `in_progress`, con motivo obligatorio, devolución de la fianza (`bond_release`) y auditoría; requiere agregar el ID al CRUD.
 
-**Decide:** David (PO). **Estado:** abierta.
+**Decide:** David (PO). **Estado:** resuelta (2026-11-11): el PO aprobó la propuesta ("que tal si alguien hace un reto imposible"). CON-09 `POST /contracts/{id}/cancel` para administradores, desde `open` o `in_progress`, con motivo y devolución de la fianza; un administrador que aceptó el reto no puede cancelarlo él mismo. Spec 004-R16.
 
 ---
 

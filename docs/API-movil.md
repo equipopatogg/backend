@@ -188,3 +188,16 @@ Reportar, confirmar, disputar y resolver partidas (MAT-03..06), invitar grupos a
 - **Mi siguiente partida:** `GET /me/matches/next` → `{ match, my_group_id, opponent_group_id, game, scheduled_at }`, o `{ "data": null }` si no hay ninguna (por ejemplo, si tu grupo pasó por bye y espera rival).
 - **Puntos:** inscribirse resta puntos con un movimiento `tournament_entry` negativo. Salir o cancelar devuelve con un `tournament_entry` positivo. Se ve en `GET /groups/{id}/points?type=tournament_entry`.
 - **Todavía no:** reportar resultado, confirmar, disputar, premio al campeón e invitar grupos desde la app. Llegan en la parte 2.
+
+## Cambios 0.11.1 (2026-11-11) — El administrador puede cancelar un reto (Q-022)
+
+- **Cancelar:** `POST /contracts/{id}/cancel` con `{ reason }` (de 5 a 140 caracteres) → `200` con el reto en `cancelled`.
+  - Solo un administrador del grupo, y solo si el reto está en `open` o `in_progress`. Sirve, por ejemplo, para un reto imposible.
+  - Quien lo aceptó recupera la fianza completa (movimiento `bond_release`) y no pierde racha ni Índice de Palabra.
+  - Al retador y a quien aceptó les llega el aviso `contract_cancelled`, con el motivo.
+- **Errores:**
+  - `403 NOT_GROUP_ADMIN` si no eres administrador.
+  - `409 ADMIN_IS_PARTICIPANT` si tú aceptaste ese reto (lo tiene que cancelar otro administrador).
+  - `409` si ya está en votación o terminado.
+  - `422` si el motivo es muy corto, muy largo o no pasa la moderación.
+- **En la app:** muestren el botón "Cancelar reto" solo a administradores, en retos `open` o `in_progress`, y pidan el motivo. Este endpoint es distinto de `DELETE /contracts/{id}`, con el que quien publicó el reto lo cancela antes de que alguien lo acepte.

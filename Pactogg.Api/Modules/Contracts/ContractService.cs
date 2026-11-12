@@ -351,6 +351,70 @@ public sealed class ContractService
         await _cache.BumpVersionAsync(CacheExtensions.GroupScope(cancelled.GroupId), cancellationToken);
     }
 
+    /// <summary>
+    /// CON-09 (spec 004-R16, Q-022): un administrador del grupo cancela un reto en open o in_progress, por ejemplo
+    /// uno imposible. La fianza vuelve completa a quien aceptó y no cambian rachas ni Índice de Palabra.
+    /// </summary>
+    public async Task<ContractResponse> CancelByAdminAsync(ObjectId userId, string id, AdminCancelContractRequest request, CancellationToken cancellationToken)
+    {
+        var contract = await RequireContractForMemberAsync(userId, id, cancellationToken);
+        var member = await _members.GetAsync(contract.GroupId, userId, cancellationToken);
+        if (member?.Role != "admin")
+        {
+            throw ApiException.Forbidden(ErrorCodes.NotGroupAdmin, "Solo un administrador del grupo puede cancelar retos de otros.");
+        }
+
+        if (contract.AcceptedBy == userId)
+        {
+            throw ApiException.Conflict(ErrorCodes.AdminIsParticipant, "Aceptaste este reto: otro administrador tiene que cancelarlo.");
+        }
+
+        if (contract.Status is not ("open" or "in_progress"))
+        {
+            throw ApiException.Conflict(ErrorCodes.InvalidContractState, contract.Status == "voting"
+                ? "El reto ya tiene evidencia y está en votación; lo decide el jurado."
+                : $"El reto está en estado {contract.Status}.");
+        }
+
+        var reason = request.Reason.Trim();
+        if (reason.Length is < 5 or > 140)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "El motivo debe tener de 5 a 140 caracteres.");
+        }
+
+        var moderation = await _moderation.ModerateTextAsync(reason, cancellationToken);
+        if (!moderation.Approved)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El motivo fue rechazado por moderación.", new { labels = moderation.Labels });
+        }
+
+        var cancelled = await _contracts.TryCancelByAdminAsync(contract.Id, DateTime.UtcNow, cancellationToken)
+            ?? throw ApiException.Conflict(ErrorCodes.InvalidContractState, "El reto cambió de estado; recarga e intenta de nuevo.");
+        await _audit.AppendAsync("contract.cancelled_by_admin", userId, "contract", cancelled.Id, cancelled.GroupId,
+            new { contract_id = cancelled.Id.ToString(), reason, bond_returned = cancelled.AcceptedBy is null ? 0 : cancelled.BondRequired }, cancellationToken);
+        await _cache.BumpVersionAsync(CacheExtensions.GroupScope(cancelled.GroupId), cancellationToken);
+
+        var recipients = new[] { cancelled.ChallengerId, cancelled.AcceptedBy ?? cancelled.ChallengerId }
+            .Distinct()
+            .Where(x => x != userId)
+            .ToArray();
+        if (recipients.Length > 0)
+        {
+            await _notifications.NotifyAsync(
+                recipients,
+                "contract_cancelled",
+                "Un administrador canceló un reto",
+                cancelled.AcceptedBy is null
+                    ? $"{cancelled.Game}: {reason}"
+                    : $"{cancelled.Game}: {reason}. Se devolvió la fianza de {cancelled.BondRequired} pts.",
+                cancelled.GroupId,
+                cancelled.Id,
+                cancellationToken: cancellationToken);
+        }
+
+        return ToResponse(cancelled);
+    }
+
     private static void RequireChallenger(Contract contract, ObjectId userId)
     {
         if (contract.ChallengerId != userId)

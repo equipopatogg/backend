@@ -800,6 +800,46 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/contracts/{id}/cancel:
+    post:
+      tags: [Contracts]
+      operationId: cancelContractByAdmin
+      summary: Cancelación por un administrador del grupo (CON-09)
+      description: >-
+        Spec 004-R16 (Q-022). Un administrador cancela un reto en open o in_progress, por ejemplo uno imposible,
+        con un motivo de 5 a 140 caracteres que pasa por moderación. La fianza vuelve completa a quien aceptó
+        (bond_release), no cambian rachas ni Índice de Palabra y se avisa al retador y a quien aceptó (contract_cancelled).
+        Miembro sin rol admin → 403 NOT_GROUP_ADMIN; administrador que aceptó el reto → 409 ADMIN_IS_PARTICIPANT;
+        en voting o estado final → 409.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 140 }
+      responses:
+        '200':
+          description: Reto cancelado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Contract' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/contracts/{id}/accept:
     post:
       tags: [Contracts]

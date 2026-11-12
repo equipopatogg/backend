@@ -103,6 +103,22 @@ public static class ContractEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        // CON-09 (spec 004-R16, Q-022): cancelación por un administrador del grupo.
+        group.MapPost("/{id}/cancel", async (
+                string id,
+                AdminCancelContractRequest request,
+                ContractService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.CancelByAdminAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<AdminCancelContractRequest>>()
+            .WithName("CancelContractByAdmin")
+            .Produces<ContractResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         var nested = app.MapGroup("/api/v1/groups/{gid}/contracts").WithTags("Contracts");
         nested.MapPost("", async (
                 string gid,

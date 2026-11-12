@@ -406,7 +406,19 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
   depends_on = [aws_s3_bucket_public_access_block.cloudtrail]
 }
 
+# La cuenta del proyecto está dentro de una organización de AWS cuya política de control (SCP) niega
+# cloudtrail:CreateTrail (AccessDenied al aplicar el 2026-11-11, F2-D69). Por eso el trail queda apagado por defecto.
+# El historial de eventos de CloudTrail (90 días de eventos de administración) sigue disponible gratis en la
+# consola sin crear un trail. Si la organización quita esa restricción: TF_VAR_enable_cloudtrail=true terraform apply.
+variable "enable_cloudtrail" {
+  description = "Crear el trail pactogg-management (la SCP de la organización lo bloquea hoy)."
+  type        = bool
+  default     = false
+}
+
 resource "aws_cloudtrail" "management" {
+  count = var.enable_cloudtrail ? 1 : 0
+
   # checkov:skip=CKV_AWS_35: Cifrado SSE-S3 sin CMK para no pagar KMS (costo cero); la validación de integridad está activa.
   # checkov:skip=CKV_AWS_252: Sin SNS; las alertas de gasto van por AWS Budgets.
   # checkov:skip=CKV2_AWS_10: CloudWatch Logs para el trail genera ingesta con costo; los eventos quedan en S3 90 días.
