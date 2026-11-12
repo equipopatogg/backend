@@ -351,7 +351,7 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.10.0",
+    version = "0.11.0",
     status = "ok"
 })).AllowAnonymous();
 

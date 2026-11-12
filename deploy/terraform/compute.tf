@@ -50,6 +50,13 @@ resource "aws_instance" "gateway" {
   vpc_security_group_ids = [aws_security_group.gateway.id]
   iam_instance_profile   = aws_iam_instance_profile.api.name
 
+  # La AMI se resuelve con la imagen de Ubuntu más reciente; sin esto cada imagen nueva de Canonical
+  # recrearía las 2 instancias en el siguiente plan. Para actualizar el sistema operativo a propósito,
+  # usar terraform apply -replace=aws_instance.gateway (y worker).
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", merge(local.common_user_data, {
     role               = "gateway"
@@ -99,6 +106,13 @@ resource "aws_instance" "worker" {
   private_ip             = local.worker_private_ip
   vpc_security_group_ids = [aws_security_group.worker.id]
   iam_instance_profile   = aws_iam_instance_profile.api.name
+
+  # La AMI se resuelve con la imagen de Ubuntu más reciente; sin esto cada imagen nueva de Canonical
+  # recrearía las 2 instancias en el siguiente plan. Para actualizar el sistema operativo a propósito,
+  # usar terraform apply -replace=aws_instance.gateway (y worker).
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", merge(local.common_user_data, {

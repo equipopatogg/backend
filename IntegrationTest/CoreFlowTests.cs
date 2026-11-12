@@ -35,7 +35,7 @@ public class PactoggWebFactory : WebApplicationFactory<Program>
     public InMemoryGroupMemberRepository Members { get; } = new();
     public InMemoryContractRepository Contracts { get; }
     public InMemoryEvidenceRepository Evidence { get; } = new();
-    public InMemoryTournamentRepository Tournaments { get; } = new();
+    public InMemoryTournamentRepository Tournaments { get; }
     public InMemoryMatchRepository Matches { get; } = new();
     public FakeObjectStorage Storage { get; } = new();
     public FakeModerationService Moderation { get; } = new();
@@ -53,6 +53,7 @@ public class PactoggWebFactory : WebApplicationFactory<Program>
     public PactoggWebFactory()
     {
         Contracts = new InMemoryContractRepository(Members, Users, Commitments, Ledger);
+        Tournaments = new InMemoryTournamentRepository(Members, Ledger, Matches);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
