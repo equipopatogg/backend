@@ -1,7 +1,8 @@
 # 004 — Contratos y demo
 
-**Fecha:** 2026-11-06 · **Estado:** Aprobada; implementada salvo 004-T9 (demo en la app) · **Sprint:** 3 (fila 63 del Sprint Planning)
+**Fecha:** 2026-11-06 · **Estado:** Aprobada; implementada salvo 004-T9 (demo en la app). Enmienda 2026-11-11: 004-R16 (Q-022) · **Sprint:** 3 (fila 63 del Sprint Planning)
 **Historias:** ID 42 Tablero de contratos · ID 43 Publicar reto · ID 44 Destinatarios de un reto · ID 70 Aceptar un reto · ID 160 Historial inmutable de contratos · ID 1 Demo interactiva · ID 5 Acceso al registro desde la demo.
+**Endpoint agregado al CRUD por Q-022:** CON-09 `POST /contracts/{id}/cancel` (cancelación por el administrador).
 **Expedientes:** [CON-01](../CON-01-create-contract/spec.md), [CON-02](../CON-02-list-contracts/spec.md), [CON-03](../CON-03-get-contract/spec.md), [CON-04/05](../CON-04-05-edit-cancel/spec.md), [CON-06](../CON-06-accept-contract/spec.md), [CON-07](../CON-07-reject-contract/spec.md), [AUD-01](../AUD-01-group-audit/spec.md).
 **Fuentes:** constitución §6.3; CLARIFICACION #30–#40, #1 y #130; Descripción del Backend 7.3; Descripción del Móvil 7.1; CRUD hoja Contratos.
 
@@ -15,7 +16,6 @@ Que un miembro publique un reto (juego, condición, recompensa, fecha límite y 
 - **Contrato por voz (CON-08):** spec [005](../005-contrato-por-voz/spec.md).
 - **Evidencias, jurado, votación y resultado:** specs 007 y 008. Aquí solo se fija que la primera evidencia pasa el reto a `voting`.
 - **Contratos con varios participantes** (CLARIFICACION #40).
-- **Cancelación de un reto aceptado por decisión del administrador** (CLARIFICACION #35): el CRUD no le asigna endpoint; registrada como Q-022.
 - **Cancelar los retos del creador que sale o es expulsado** (CLARIFICACION #37): depende de MEM-04/MEM-05, que no existen todavía; se implementa con esos endpoints (004-T8).
 
 ## 3. Requisitos funcionales (EARS)
@@ -37,6 +37,7 @@ Que un miembro publique un reto (juego, condición, recompensa, fecha límite y 
 | 004-R13 | Cuando se registre la primera evidencia aprobada, el sistema deberá pasar el reto de `in_progress` a `voting` y congelarlo. | EVI-02 |
 | 004-R14 | Mientras un contrato esté en un estado final (`fulfilled`, `cheating`, `expired`, `cancelled`), el sistema deberá rechazar cualquier transición. | Todas |
 | 004-R15 | Cuando ocurra cualquier transición, el sistema deberá escribirla en la auditoría encadenada por hash, visible en solo lectura para los administradores del grupo. | AUD-01 |
+| 004-R16 | Cuando un administrador del grupo cancele un reto en `open` o `in_progress` con un motivo de 5 a 140 caracteres (moderado), el sistema deberá pasarlo a `cancelled` (`closed_reason = cancelled_by_admin`), devolver la fianza completa a quien lo aceptó (`bond_release`), no cambiar rachas ni Índice de Palabra, auditarlo con el motivo y avisar al retador y a quien aceptó; si el administrador es quien aceptó el reto, `409 ADMIN_IS_PARTICIPANT`; si no es administrador, `403`; en `voting` o un estado final, `409` (CLARIFICACION #35, Q-022). | CON-09 |
 
 ## 4. Requisitos no funcionales
 
@@ -70,10 +71,11 @@ CON-01 (`POST /contracts` y alias `POST /groups/{gid}/contracts`), CON-02, CON-0
 | 004-AC14 | R13 | Primera evidencia → `voting` | `CoreFlowTests.Evidence_FirstEvidenceMovesContractToVoting` |
 | 004-AC15 | R14 | Aceptar dos veces → 409 | `SocialFlowTests` |
 | 004-AC16 | R15 | El administrador ve `contract.created`, `contract.updated`, `contract.cancelled` | `AccountAndPushTests.Challenger_EditsAndCancelsOpenContract_AdminSeesAudit` |
+| 004-AC17 | R16 | Administrador cancela un reto aceptado → `cancelled` y la fianza vuelve; miembro normal → 403; administrador que aceptó → 409; en `voting` → 409; motivo corto → 422 | `Spec004AdminCancelTests` |
 
 ## 7. Preguntas abiertas
 
-Ninguna que bloquee esta spec. Q-022 (cancelación por el administrador) quedó fuera de alcance y no cambia ningún requisito de arriba.
+Ninguna. Q-022 se resolvió el 2026-11-11 (004-R16).
 
 ## 8. Verificación contra la constitución
 
@@ -85,6 +87,7 @@ Ninguna que bloquee esta spec. Q-022 (cancelación por el administrador) quedó 
 | §6.3 recompensa 3–80 moderada y sin dinero | Sí (R4, R5) |
 | §6.3 vencido sin evidencia → `expired`, fianza al retador | Sí (R12) |
 | §6.3 auditoría encadenada en cada transición | Sí (R15) |
+| CLARIFICACION #35 después de `open` solo se cancela por salida, expulsión o decisión del administrador | Sí (004-T8 y R16) |
 | §7.1 `Idempotency-Key` al aceptar | Sí (R9) |
 | §3.9 texto libre moderado | Sí, ahora también el juego (004-T7) |
 

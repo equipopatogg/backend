@@ -77,6 +77,12 @@ public interface IContractRepository
     /// <summary>Retos activos (open, in_progress, voting) de un grupo; si userId viene, solo donde es retador, retado o quien aceptó.</summary>
     Task<IReadOnlyList<Contract>> ListActiveAsync(ObjectId groupId, ObjectId? userId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// CON-09 (004-R16) en una transacción: open o in_progress → cancelled (closed_reason cancelled_by_admin,
+    /// resolved_by admin) y devuelve la fianza a quien aceptó. Null si el reto ya cambió de estado.
+    /// </summary>
+    Task<Contract?> TryCancelByAdminAsync(ObjectId id, DateTime now, CancellationToken cancellationToken);
+
     /// <summary>Cancela un reto activo y devuelve la fianza retenida a quien aceptó (CLARIFICACION #26, #37).</summary>
     Task<Contract?> TryCancelActiveWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken);
 

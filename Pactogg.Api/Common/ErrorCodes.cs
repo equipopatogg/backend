@@ -56,6 +56,7 @@ public static class ErrorCodes
     public const string NotCommitmentParty = "NOT_COMMITMENT_PARTY";
     public const string VotingStarted = "VOTING_STARTED";
     public const string NotEvidenceOwner = "NOT_EVIDENCE_OWNER";
+    public const string AdminIsParticipant = "ADMIN_IS_PARTICIPANT";
     public const string TournamentNotOpen = "TOURNAMENT_NOT_OPEN";
     public const string TournamentFull = "TOURNAMENT_FULL";
     public const string AlreadyInTournament = "ALREADY_IN_TOURNAMENT";

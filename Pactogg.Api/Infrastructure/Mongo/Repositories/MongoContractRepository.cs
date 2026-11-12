@@ -627,6 +627,32 @@ public sealed class MongoContractRepository : IContractRepository
         return await _context.Contracts.Find(filter).Limit(200).ToListAsync(cancellationToken);
     }
 
+    public async Task<Contract?> TryCancelByAdminAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        return await InTransactionAsync(async session =>
+        {
+            var contract = await _context.Contracts.FindOneAndUpdateAsync(
+                session,
+                Builders<Contract>.Filter.Eq(x => x.Id, id) & Builders<Contract>.Filter.In(x => x.Status, ["open", "in_progress"]),
+                Builders<Contract>.Update
+                    .Set(x => x.Status, "cancelled")
+                    .Set(x => x.ClosedReason, "cancelled_by_admin")
+                    .Set(x => x.ResolvedBy, "admin")
+                    .Set(x => x.ResolvedAt, now)
+                    .Set(x => x.UpdatedAt, now)
+                    .Inc(x => x.Version, 1),
+                new FindOneAndUpdateOptions<Contract> { ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+
+            if (contract is { AcceptedBy: ObjectId acceptor, BondRequired: > 0 })
+            {
+                await CreditAsync(session, contract, acceptor, contract.BondRequired, "bond_release", now, cancellationToken);
+            }
+
+            return contract;
+        }, cancellationToken);
+    }
+
     public async Task<Contract?> TryCancelActiveWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken)
     {
         return await InTransactionAsync(async session =>

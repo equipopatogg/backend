@@ -740,6 +740,25 @@ public sealed class InMemoryContractRepository : IContractRepository
         return Task.FromResult<IReadOnlyList<Contract>>(items);
     }
 
+    public async Task<Contract?> TryCancelByAdminAsync(ObjectId id, DateTime now, CancellationToken cancellationToken)
+    {
+        var contract = await Mutate(id, x => x.Status is "open" or "in_progress", x =>
+        {
+            x.Status = "cancelled";
+            x.ClosedReason = "cancelled_by_admin";
+            x.ResolvedBy = "admin";
+            x.ResolvedAt = now;
+            x.UpdatedAt = now;
+        });
+
+        if (contract is { AcceptedBy: ObjectId acceptor, BondRequired: > 0 })
+        {
+            Credit(contract, acceptor, contract.BondRequired, "bond_release", now);
+        }
+
+        return contract;
+    }
+
     public async Task<Contract?> TryCancelActiveWithRefundAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken)
     {
         var contract = await Mutate(id, x => x.Status is "open" or "in_progress" or "voting", x =>
