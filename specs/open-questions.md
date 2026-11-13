@@ -152,7 +152,7 @@
 
 **Propuesta:** Gemini API o Groq detrás de `IContractParser`; límite de 20 solicitudes/día y 5/minuto; timeout y circuit breaker; salida validada por esquema; fallback a escritura manual.
 
-**Decide:** David (PO). **Estado:** abierta.
+**Decide:** David (PO). **Estado:** abierta. Desde v0.12.0 el adaptador (`IContractDraftProvider`) y uno genérico OpenAI-compatible están listos (005-D4, F2-D73); al fijar el proveedor solo se configura.
 
 ---
 

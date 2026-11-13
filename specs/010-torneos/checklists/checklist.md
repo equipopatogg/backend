@@ -6,4 +6,4 @@
 - [x] Verificación contra la constitución.
 - [x] Aprobación del Product Owner y de sus decisiones (2026-11-07).
 - [ ] Revisión técnica (Kevin) y comprobabilidad (José).
-- [ ] Tareas pendientes implementadas y criterios en verde.
+- [x] Tareas pendientes implementadas y criterios en verde (v0.12.0, 2026-11-12; falta solo la prueba manual en producción).

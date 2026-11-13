@@ -65,9 +65,22 @@ public sealed class ContractService
             throw ApiException.Conflict(ErrorCodes.GroupTooSmall, $"El grupo necesita al menos {MinMembersForContracts} miembros para lanzar retos.");
         }
 
-        if (!string.Equals(request.Source, "manual", StringComparison.OrdinalIgnoreCase))
+        // 005-R14: source=voice guarda la frase dictada; source=manual no lleva frase.
+        var source = string.IsNullOrWhiteSpace(request.Source) ? "manual" : request.Source.Trim().ToLowerInvariant();
+        var originalPhrase = string.IsNullOrWhiteSpace(request.OriginalPhrase) ? null : request.OriginalPhrase.Trim();
+        if (source is not ("manual" or "voice"))
         {
-            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "En esta entrega solo se admite source=manual.");
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "source debe ser manual o voice.");
+        }
+
+        if (source == "manual" && originalPhrase is not null)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "original_phrase solo va con source=voice.");
+        }
+
+        if (originalPhrase is { Length: > 300 })
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "original_phrase admite hasta 300 caracteres.");
         }
 
         var deadline = request.Deadline.UtcDateTime;
@@ -120,6 +133,12 @@ public sealed class ContractService
             throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "El contrato fue rechazado por moderación.", new { labels });
         }
 
+        // La frase dictada también la ven los miembros del grupo: pasa por la misma moderación.
+        if (source == "voice" && originalPhrase is not null && await _moderation.ModerateTextAsync(originalPhrase, cancellationToken) is { Approved: false } phraseModeration)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ContentRejected, "La frase dictada fue rechazada por moderación.", new { labels = phraseModeration.Labels });
+        }
+
         var now = DateTime.UtcNow;
         var contract = new Contract
         {
@@ -134,7 +153,8 @@ public sealed class ContractService
             Deadline = deadline,
             BondRequired = request.BondRequired,
             Status = "open",
-            Source = "manual",
+            Source = source,
+            OriginalPhrase = source == "voice" ? originalPhrase : null,
             EvidenceCount = 0,
             Version = 1,
             CreatedAt = now,
@@ -506,6 +526,8 @@ public sealed class ContractService
         Game = contract.Game,
         Condition = contract.Condition,
         Reward = contract.Reward,
+        Source = contract.Source,
+        OriginalPhrase = contract.OriginalPhrase,
         Deadline = contract.Deadline,
         BondRequired = contract.BondRequired,
         Status = contract.Status,

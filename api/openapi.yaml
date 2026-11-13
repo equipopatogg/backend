@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: PactoGG API
   version: 1.0.0
-  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1); reglas de votación, plazos, idempotencia y límites de los documentos (v0.7.0); verificación de correo, recuperación y cambio de contraseña, perfil público, editar/cancelar retos, auditoría y push con FCM (v0.8.0); validación SDD 001–006 con nombre de grupo y juego moderados, login sin pista por tiempo, /health/ready y tope de 5 dispositivos (v0.8.1); administración de grupos, borrar cuenta, reportes, bloqueos y detalles (v0.9.0).
+  description: Contrato de los endpoints obligatorios de la evaluación más perfil, unirse a grupos, miembros, tablero de retos y aceptar/rechazar (v0.5.0) y jurado, puntos, compromisos, avisos y Muro de la Fama (v0.6.0); login con Google (v0.6.1); reglas de votación, plazos, idempotencia y límites de los documentos (v0.7.0); verificación de correo, recuperación y cambio de contraseña, perfil público, editar/cancelar retos, auditoría y push con FCM (v0.8.0); validación SDD 001–006 con nombre de grupo y juego moderados, login sin pista por tiempo, /health/ready y tope de 5 dispositivos (v0.8.1); administración de grupos, borrar cuenta, reportes, bloqueos y detalles (v0.9.0); evidencias, reputación y torneos parte 1 (v0.10–v0.11); partidas MAT-03..06, premio, TOR-09 y contrato por voz CON-08 con adaptador de IA (v0.12.0).
 servers:
   - url: https://52-3-200-211.sslip.io
     description: Producción AWS (HTTPS, Let's Encrypt; cambia si se recrea la infraestructura)
@@ -800,6 +800,49 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/groups/{gid}/contracts/parse:
+    post:
+      tags: [Contracts]
+      operationId: parseContractPhrase
+      summary: Borrador del reto a partir de la frase dictada (CON-08)
+      description: >-
+        Spec 005. La app transcribe la voz y manda solo el texto (1 a 300 caracteres); no se envía audio ni se guarda nada.
+        El modelo recibe la frase delimitada y los apodos del grupo (sin correos ni ids). Su salida se valida contra un esquema
+        estricto; si falla dos veces → 422 AI_PARSE_FAILED. El rival solo se acepta si coincide con el apodo de otro miembro;
+        si no, rival_unmatched=true y members para elegir. Campos que no cumplen CON-01 (o recompensa con dinero) vuelven vacíos
+        en missing_fields. Límite 5 por minuto y 20 por día (429 con Retry-After); caché 10 min por hash de la frase (cached=true).
+        Sin proveedor configurado, más de 8 s o circuito abierto → 503 AI_UNAVAILABLE: la app ofrece escribir a mano.
+        Después se lanza con CON-01 usando source=voice y original_phrase.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phrase]
+              properties:
+                phrase: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: Borrador para revisar
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractDraft' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/contracts/{id}/cancel:
     post:
       tags: [Contracts]
@@ -1376,6 +1419,39 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/tournaments/{id}/invite:
+    post:
+      tags: [Tournaments]
+      operationId: inviteGroupsToTournament
+      summary: Invitar grupos (TOR-09)
+      description: >-
+        Spec 010-R8 y 010-D3. Solo el organizador y con el torneo open. Se avisa (tournament_invite, con el código) a los
+        administradores de los grupos donde el organizador también es miembro activo; los demás se saltan con not_member
+        y el código se comparte fuera de la app. already_joined = ya inscrito; not_found = id inválido o grupo eliminado.
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteGroupsRequest' }
+      responses:
+        '200':
+          description: Resultado de la invitación
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/InviteGroupsResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/tournaments/{id}/start:
     post:
       tags: [Tournaments]
@@ -1457,6 +1533,143 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/matches/{id}/report:
+    post:
+      tags: [Matches]
+      operationId: reportMatch
+      summary: Reportar resultado con foto (MAT-03)
+      description: >-
+        Spec 010-R10. Un miembro activo de uno de los dos grupos manda marcador y foto (JPEG, PNG o WebP, máx. 5 MB, moderada).
+        Queda como representante de su grupo (010-D4). Empate → 422 TIE_NOT_ALLOWED (se repite la partida). Si eres de los dos
+        grupos, group_id dice por cuál juegas. winner_group_id es opcional y debe coincidir con el marcador. La foto se guarda bajo
+        evidence/ y se borra a los 30 días. Se avisa al grupo rival (tournament_match_reported). Partida ya reportada, sin rival
+        o torneo que no está en curso → 409.
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, p1_score, p2_score]
+              properties:
+                file: { type: string, format: binary }
+                p1_score: { type: integer, minimum: 0, maximum: 999 }
+                p2_score: { type: integer, minimum: 0, maximum: 999 }
+                winner_group_id: { type: string }
+                group_id: { type: string, description: Solo si eres miembro de los dos grupos }
+      responses:
+        '200':
+          description: Partida reportada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Match' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/matches/{id}/confirm:
+    post:
+      tags: [Matches]
+      operationId: confirmMatch
+      summary: El grupo rival confirma el resultado (MAT-04)
+      description: >-
+        Spec 010-R11. Solo un miembro del grupo que no reportó (403 NOT_MATCH_PLAYER; quien reportó → 403 CANNOT_CONFIRM_OWN_REPORT).
+        La partida pasa a confirmed, el ganador avanza a su lugar en la siguiente partida y, si era la final, el torneo termina:
+        la bolsa se reparte en partes iguales entre quienes jugaron por el campeón (residuo al primero, tournament_prize),
+        trofeo campeon_torneo y aviso tournament_finished (010-R14).
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Partida confirmada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Match' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/matches/{id}/dispute:
+    post:
+      tags: [Matches]
+      operationId: disputeMatch
+      summary: El grupo rival disputa el resultado (MAT-05)
+      description: Spec 010-R12. Motivo de 5 a 140 caracteres, moderado. La partida pasa a disputed y se avisa al organizador (tournament_match_disputed).
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisputeMatchRequest' }
+      responses:
+        '200':
+          description: Partida en disputa
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Match' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/matches/{id}/resolve:
+    post:
+      tags: [Matches]
+      operationId: resolveMatch
+      summary: El organizador fija el ganador (MAT-06)
+      description: >-
+        Spec 010-R13. Solo el organizador (403 NOT_TOURNAMENT_ORGANIZER) y nunca en una partida donde juega uno de sus grupos
+        (409 ORGANIZER_PLAYS_MATCH, CLARIFICACION #105). Se puede en disputed (resolved_dispute), en reported con 24 h o más
+        sin respuesta (resolved_no_answer; antes → 409 REPORT_TOO_RECENT) o en pending con los dos grupos (abandonment).
+        Si el ganador contradice el reporte, o es abandono, el marcador se borra. Avanza al ganador igual que MAT-04.
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveMatchRequest' }
+      responses:
+        '200':
+          description: Partida resuelta
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Match' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/me/matches/next:
     get:
       tags: [Matches]
@@ -2424,7 +2637,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     ServiceUnavailable:
-      description: Moderación o almacenamiento no disponible (falla cerrada)
+      description: Moderación, almacenamiento o IA no disponible (falla cerrada; AI_UNAVAILABLE en CON-08)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2557,7 +2770,8 @@ components:
           default: group
           description: member exige target_id de otro miembro del grupo; retarse a sí mismo devuelve 422 INVALID_TARGET.
         target_id: { type: string, nullable: true }
-        source: { type: string, enum: [manual], default: manual }
+        source: { type: string, enum: [manual, voice], default: manual }
+        original_phrase: { type: string, maxLength: 300, nullable: true, description: 'Frase dictada (spec 005-R14); solo con source=voice, con manual → 422' }
     Contract:
       type: object
       properties:
@@ -2569,6 +2783,8 @@ components:
         game: { type: string }
         condition: { type: string }
         reward: { type: string }
+        source: { type: string, enum: [manual, voice] }
+        original_phrase: { type: string, nullable: true }
         deadline: { type: string, format: date-time }
         bond_required: { type: integer }
         status: { type: string, enum: [open, in_progress, voting, fulfilled, cheating, expired, cancelled] }
@@ -3018,7 +3234,64 @@ components:
         status: { type: string, enum: [pending, reported, confirmed, disputed, bye, cancelled] }
         next_match_id: { type: string, nullable: true }
         reported_at: { type: string, format: date-time, nullable: true }
+        reported_by_group_id: { type: string, nullable: true }
+        dispute_reason: { type: string, nullable: true }
+        resolution: { type: string, nullable: true, enum: [confirmed_by_rival, resolved_dispute, resolved_no_answer, abandonment] }
+        confirmed_at: { type: string, format: date-time, nullable: true }
+        screenshot_url: { type: string, nullable: true, description: URL firmada 15 min de la foto (MAT-02..06) }
         updated_at: { type: string, format: date-time }
+    DisputeMatchRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 140 }
+    ResolveMatchRequest:
+      type: object
+      required: [winner_group_id]
+      properties:
+        winner_group_id: { type: string }
+        reason: { type: string, maxLength: 140 }
+    InviteGroupsRequest:
+      type: object
+      required: [group_ids]
+      properties:
+        group_ids:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: { type: string }
+    InviteGroupsResponse:
+      type: object
+      properties:
+        invited: { type: array, items: { type: string } }
+        skipped:
+          type: array
+          items:
+            type: object
+            properties:
+              group_id: { type: string }
+              reason: { type: string, enum: [not_member, already_joined, not_found] }
+        code: { type: string }
+    ContractDraft:
+      type: object
+      properties:
+        target_type: { type: string, enum: [group, member] }
+        target_id: { type: string, nullable: true }
+        target_nickname: { type: string, nullable: true }
+        game: { type: string }
+        condition: { type: string }
+        reward: { type: string }
+        missing_fields: { type: array, items: { type: string, enum: [game, condition, reward] } }
+        rival_unmatched: { type: boolean }
+        members:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              nickname: { type: string }
+        cached: { type: boolean }
     NextMatch:
       type: object
       properties:

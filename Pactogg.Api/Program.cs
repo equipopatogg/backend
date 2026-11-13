@@ -119,6 +119,7 @@ builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(Ra
 builder.Services.Configure<ContractLifecycleOptions>(builder.Configuration.GetSection(ContractLifecycleOptions.SectionName));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.Configure<FirebaseOptions>(builder.Configuration.GetSection(FirebaseOptions.SectionName));
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection(AiOptions.SectionName));
 
 if (builder.Environment.IsProduction()
     && !string.Equals(builder.Configuration["Moderation:Mode"], "Aws", StringComparison.OrdinalIgnoreCase))
@@ -289,6 +290,18 @@ builder.Services.AddSingleton<PushQueue>();
 builder.Services.AddHttpClient<IPushSender, FcmPushSender>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHostedService<PushDispatcher>();
 
+// CON-08 (spec 005, Q-007): sin Ai:Provider la API responde 503 AI_UNAVAILABLE y la app pide escribir a mano.
+if (string.Equals(builder.Configuration["Ai:Provider"], "OpenAiCompatible", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<Pactogg.Api.Infrastructure.Ai.IContractDraftProvider, Pactogg.Api.Infrastructure.Ai.OpenAiCompatibleDraftProvider>(client => client.Timeout = TimeSpan.FromSeconds(15));
+}
+else
+{
+    builder.Services.AddSingleton<Pactogg.Api.Infrastructure.Ai.IContractDraftProvider, Pactogg.Api.Infrastructure.Ai.UnavailableDraftProvider>();
+}
+
+builder.Services.AddSingleton<Pactogg.Api.Infrastructure.Ai.DraftCircuitBreaker>();
+
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<DeviceService>();
@@ -297,6 +310,8 @@ builder.Services.AddScoped<GroupService>();
 builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<EvidenceService>();
 builder.Services.AddScoped<TournamentService>();
+builder.Services.AddScoped<MatchService>();
+builder.Services.AddScoped<Pactogg.Api.Modules.Contracts.Drafts.ContractDraftService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<Pactogg.Api.Modules.Users.AccountDeletionService>();
 builder.Services.AddScoped<GroupAccess>();
@@ -351,7 +366,7 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.11.1",
+    version = "0.12.0",
     status = "ok"
 })).AllowAnonymous();
 

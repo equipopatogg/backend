@@ -1,11 +1,13 @@
 using Pactogg.Api.Common;
 using Pactogg.Api.Common.Extensions;
+using Microsoft.Extensions.Options;
 using Pactogg.Api.Common.Middleware;
+using Pactogg.Api.Infrastructure.Options;
 using Pactogg.Api.Modules.Tournaments.Dtos;
 
 namespace Pactogg.Api.Modules.Tournaments;
 
-/// <summary>Spec 010: TOR-01..08 y las lecturas MAT-01, MAT-02 y MAT-07.</summary>
+/// <summary>Spec 010: TOR-01..09 y MAT-01..07.</summary>
 public static class TournamentEndpoints
 {
     public static IEndpointRouteBuilder MapTournamentEndpoints(this IEndpointRouteBuilder app)
@@ -140,14 +142,107 @@ public static class TournamentEndpoints
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         // MAT-02.
-        app.MapGet("/api/v1/matches/{id}", async (string id, TournamentService service, HttpContext context, CancellationToken cancellationToken) =>
-                ApiResults.Ok(await service.GetMatchAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+        // TOR-09 (010-R8).
+        group.MapPost("/{id}/invite", async (string id, InviteGroupsRequest request, MatchService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.InviteAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
             .RequireAuthorization()
-            .WithTags("Matches")
+            .AddEndpointFilter<ValidationFilter<InviteGroupsRequest>>()
+            .WithName("InviteGroupsToTournament")
+            .Produces<InviteGroupsResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        var matches = app.MapGroup("/api/v1/matches").WithTags("Matches");
+
+        matches.MapGet("/{id}", async (string id, MatchService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.GetAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
             .WithName("GetMatch")
             .Produces<MatchResponse>()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // MAT-03 (010-R10): multipart con file, p1_score, p2_score y, opcionales, winner_group_id y group_id.
+        matches.MapPost("/{id}/report", async (string id, MatchService service, IOptions<EvidenceOptions> options, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                if (!context.Request.HasFormContentType)
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Envía multipart/form-data con file, p1_score y p2_score.");
+                }
+
+                IFormCollection form;
+                try
+                {
+                    form = await context.Request.ReadFormAsync(cancellationToken);
+                }
+                catch (InvalidDataException)
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ImageTooLarge, "La imagen supera el tamaño permitido.");
+                }
+
+                if (!int.TryParse(form["p1_score"], out var p1) || !int.TryParse(form["p2_score"], out var p2))
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ValidationError, "p1_score y p2_score son números enteros.");
+                }
+
+                var file = form.Files.GetFile("file")
+                    ?? throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Falta la foto del resultado (file).");
+                if (file.Length <= 0 || file.Length > options.Value.MaxImageBytes)
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ImageTooLarge, "La imagen supera el tamaño permitido.");
+                }
+
+                await using var stream = file.OpenReadStream();
+                using var memory = new MemoryStream();
+                await stream.CopyToAsync(memory, cancellationToken);
+                var winner = form["winner_group_id"].ToString();
+                var groupId = form["group_id"].ToString();
+                return ApiResults.Ok(await service.ReportAsync(
+                    context.User.GetRequiredObjectId(),
+                    id,
+                    p1,
+                    p2,
+                    string.IsNullOrWhiteSpace(groupId) ? null : groupId,
+                    string.IsNullOrWhiteSpace(winner) ? null : winner,
+                    memory.ToArray(),
+                    file.ContentType,
+                    cancellationToken));
+            })
+            .RequireAuthorization()
+            .WithName("ReportMatch")
+            .Produces<MatchResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        // MAT-04 (010-R11).
+        matches.MapPost("/{id}/confirm", async (string id, MatchService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.ConfirmAsync(context.User.GetRequiredObjectId(), id, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("ConfirmMatch")
+            .Produces<MatchResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        // MAT-05 (010-R12).
+        matches.MapPost("/{id}/dispute", async (string id, DisputeMatchRequest request, MatchService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.DisputeAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<DisputeMatchRequest>>()
+            .WithName("DisputeMatch")
+            .Produces<MatchResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        // MAT-06 (010-R13).
+        matches.MapPost("/{id}/resolve", async (string id, ResolveMatchRequest request, MatchService service, HttpContext context, CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.ResolveAsync(context.User.GetRequiredObjectId(), id, request, cancellationToken)))
+            .RequireAuthorization()
+            .AddEndpointFilter<ValidationFilter<ResolveMatchRequest>>()
+            .WithName("ResolveMatch")
+            .Produces<MatchResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // MAT-07: data es null si no hay partida pendiente.
         app.MapGet("/api/v1/me/matches/next", async (TournamentService service, HttpContext context, CancellationToken cancellationToken) =>

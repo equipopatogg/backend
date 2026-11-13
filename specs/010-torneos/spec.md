@@ -1,8 +1,8 @@
 # 010 — Torneos entre grupos
 
-**Fecha:** 2026-11-07 · **Estado:** Aprobada; parte 1 implementada (v0.11.0, 2026-11-11: TOR-01, TOR-03..08, MAT-01, MAT-02, MAT-07); faltan MAT-03..06, TOR-09, premio y cancelación automática · **Sprint:** 4 (fila 102)
+**Fecha:** 2026-11-07 · **Estado:** Implementada (parte 1 en v0.11.0 el 2026-11-11; parte 2 en v0.12.0 el 2026-11-12: MAT-03..06, TOR-09, premio y cancelación automática); falta la prueba manual en producción · **Sprint:** 4 (fila 102)
 **Historias:** torneos exprés entre grupos, inscripción en puntos, bracket con byes, reporte de resultados (ID 115), bolsa al campeón.
-**Endpoints del CRUD:** TOR-01..09 y MAT-01..07 (TOR-02 hecho; los demás por hacer).
+**Endpoints del CRUD:** TOR-01..09 y MAT-01..07 (todos implementados).
 **Fuentes:** constitución §6.7 y §7.1; CLARIFICACION #1, #3, #96–#107, #116; Descripción del Backend 7.8; CRUD hojas Torneos y Partidas; D-20.
 
 ## 1. Contexto y objetivo
@@ -69,10 +69,10 @@ TOR-01..09, MAT-01..07 (rutas en la lista de endpoints). Esquemas: `CreateTourna
 | 010-AC1 | Cumple | `Spec010TournamentTests.AC1_CreateCharges50_OtherAdminJoins_PoolIs100_RetryDoesNotChargeTwice_NoBalance402`, `AC1_Validation_SizeEntryDateAndAdminOnly` |
 | 010-AC2 | Cumple | `Spec010TournamentTests.AC2_EditAndLeaveWhileOpen_AfterStart409_OrganizerGroupCannotLeave` |
 | 010-AC3 | Cumple | `Spec010TournamentTests.AC3_Bracket_FillsWithByesThatAdvanceAlone` (2 a 16 grupos), `AC3_AC8_StartWith3Groups_BracketOf4WithOneBye_NextMatchAndAccess` |
-| 010-AC4 | Pendiente (010-T5) | — |
-| 010-AC5 | Pendiente (010-T5) | — |
-| 010-AC6 | Pendiente (010-T6) | — |
-| 010-AC7 | Cancelación del organizador cumple; la automática (R16) falta en 010-T3 | `Spec010TournamentTests.AC7_CancelInProgress_RefundsEveryone_AndCancelsOpenMatches` |
+| 010-AC4 | Cumple | `Spec010MatchTests.AC4_AC6_TieRejected_ReportAndRivalConfirm_WinnerAdvances_FinalSplitsThePoolAndAwardsTrophy` |
+| 010-AC5 | Cumple | `Spec010MatchTests.AC5_Dispute_OrganizerResolves_AndCannotResolveTheMatchHePlays`, `AC5_ReportWithoutAnswer24h_OrganizerConfirms_AbandonmentInTheFinal_PrizeToWhoPlayed` |
+| 010-AC6 | Cumple | `Spec010MatchTests.AC4_AC6_…` (suma de premios = bolsa, trofeo a los dos que jugaron), `AC6_Split_EqualParts_RemainderToTheFirst` |
+| 010-AC7 | Cumple | `Spec010TournamentTests.AC7_CancelInProgress_RefundsEveryone_AndCancelsOpenMatches`, `Spec010MatchTests.AC7_GroupDeleted_LeavesLessThan2_CancelsAndRefunds_With3GroupsKeepsGoing` |
 | 010-AC8 | Cumple | `Spec010TournamentTests.AC3_AC8_…`, `AC8_Detail_ShowsGroupsWithoutPersonalData_CodeOnlyForAdmins_PreviewByCode` |
 
 ## 7. Decisiones (aprobadas por el PO el 2026-11-07)
@@ -81,6 +81,8 @@ TOR-01..09, MAT-01..07 (rutas en la lista de endpoints). Esquemas: `CreateTourna
 - **010-D2:** la inscripción la paga el administrador que inscribe, de su saldo en su grupo (los grupos no tienen saldo propio, §6.6); el premio va a los representantes que jugaron por el campeón (CLARIFICACION #106).
 - **010-D3:** los grupos no se ven entre sí (privacidad, §3.5): otro grupo entra con el código del torneo; la invitación por la app solo llega a grupos donde el organizador también es miembro.
 - **010-D4:** el representante de un grupo en una partida es el miembro que reporta, confirma o disputa por ese grupo; no se designa antes.
+- **010-D5 (2026-11-12, F2-D71):** si el campeón no tuvo ningún representante (todas sus partidas las cerró el organizador), la bolsa va a quien pagó su inscripción. Solo cobran representantes que sigan siendo miembros activos del grupo campeón. Al resolver, si el ganador contradice el reporte o es abandono, el marcador se borra.
+- **010-D6 (2026-11-12, F2-D72):** R8 (TOR-09) responde `{ invited, skipped: [{ group_id, reason }], code }`; `reason` es `not_member` (el organizador no es miembro activo; no revela si el grupo existe), `already_joined` o `not_found`. R16 cuenta como activos los grupos inscritos no eliminados y se revisa al eliminar un grupo.
 
 ## 8. Preguntas abiertas
 

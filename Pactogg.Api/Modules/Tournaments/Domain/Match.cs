@@ -59,6 +59,23 @@ public sealed class Match
     [BsonElement("reported_by")]
     public ObjectId? ReportedBy { get; set; }
 
+    /// <summary>Grupo de quien reportó (010-R10).</summary>
+    [BsonElement("reported_by_group_id")]
+    public ObjectId? ReportedByGroupId { get; set; }
+
+    [BsonElement("disputed_by")]
+    public ObjectId? DisputedBy { get; set; }
+
+    [BsonElement("disputed_at")]
+    public DateTime? DisputedAt { get; set; }
+
+    [BsonElement("confirmed_at")]
+    public DateTime? ConfirmedAt { get; set; }
+
+    /// <summary>confirmed_by_rival, resolved_dispute, resolved_no_answer o abandonment (010-R11, R13).</summary>
+    [BsonElement("resolution")]
+    public string? Resolution { get; set; }
+
     [BsonElement("next_match_id")]
     public ObjectId? NextMatchId { get; set; }
 

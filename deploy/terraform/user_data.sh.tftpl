@@ -85,13 +85,13 @@ Cors__AllowedOrigins__${index}=${origin}
 %{ endfor ~}
 ENVFILE
 
-# Opcionales (F2-D59): correo, Firebase y verificación obligatoria. Viven en SSM y se crean con
-# scripts/configure-email.sh; si un parámetro no existe, su línea no se escribe y la API sigue igual.
+# Opcionales (F2-D59, F2-D73): correo, Firebase, verificación obligatoria e IA de CON-08. Viven en SSM y se crean con
+# scripts/configure-email.sh, configure-firebase.sh y configure-ai.sh; si un parámetro no existe, su línea no se escribe y la API sigue igual.
 get_optional() {
   aws ssm get-parameter --region "$REGION" --name "$PARAM_PREFIX/$1" \
     --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true
 }
-for name in Email__SmtpHost Email__SmtpPort Email__SmtpUser Email__SmtpPassword Email__FromAddress Firebase__ProjectId Firebase__ServiceAccountJson Auth__RequireVerifiedEmail; do
+for name in Email__SmtpHost Email__SmtpPort Email__SmtpUser Email__SmtpPassword Email__FromAddress Firebase__ProjectId Firebase__ServiceAccountJson Auth__RequireVerifiedEmail Ai__Provider Ai__Endpoint Ai__Model Ai__ApiKey; do
   value="$(get_optional "$name")"
   if [ -n "$value" ] && [ "$value" != "None" ]; then
     printf '%s=%s\n' "$name" "$value" >> /opt/pactogg/api.env

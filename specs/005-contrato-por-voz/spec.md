@@ -1,6 +1,6 @@
 # 005 — Contrato por voz con IA
 
-**Fecha:** 2026-11-06 · **Estado:** Aprobada para implementar; proveedor de IA pendiente (Q-007) · **Sprint:** 3 (fila 64 del Sprint Planning)
+**Fecha:** 2026-11-06 · **Estado:** Implementada en v0.12.0 (2026-11-12) con el proveedor falso y un adaptador genérico OpenAI-compatible; falta conectar el modelo real (Q-007) · **Sprint:** 3 (fila 64 del Sprint Planning)
 **Historias:** ID 56 Dictar reto por voz · ID 57 Transcripción del reto · ID 58 Extracción de datos mediante IA · ID 59 Revisión de campos de IA · ID 60 Identificación automática del rival.
 **Endpoint del CRUD:** CON-08 `POST /api/v1/groups/{gid}/contracts/parse`; cambio en CON-01 (`source=voice`).
 **Fuentes:** constitución §1, §4 (IA generativa) y §7.1; CLARIFICACION #41–#50, #136 y sección IA de seguridad; Descripción del Backend 7.4 (BE-15); Descripción del Móvil §11; CRUD hoja Contratos (CON-08, campos `source` y `original_phrase`).
@@ -104,6 +104,26 @@ Adaptador: `IContractDraftProvider.CompleteAsync(systemPrompt, userData, ct) →
 | 005-AC12 | R14 | CON-01 con `source=voice` guarda `original_phrase`; `source=manual` con frase → 422 |
 | 005-AC13 | R15 | Los logs de la petición no contienen la frase |
 
+## 6.1 Evidencia (v0.12.0)
+
+| AC | Estado | Prueba |
+|---|---|---|
+| 005-AC1 | Cumple | `Spec005ContractDraftTests.AC1_AC3_RivalInTheGroup_BecomesTargetMember_AndTheProviderOnlyGetsNicknamesAndThePhrase` |
+| 005-AC2 | Cumple | `AC2_NotMember403_TooLong422_Empty422` |
+| 005-AC3 | Cumple | `AC1_AC3_…` (apodos y frase sí; correo, ids y `@` no) |
+| 005-AC4 | Cumple | `AC4_Injection_OutputStillValidated_ExtraFieldsRejected`, `AC4_SchemaValidator_IsStrict` (8 casos) |
+| 005-AC5 | Cumple | `AC5_InvalidJsonTwice_422AiParseFailed_ExactlyTwoCalls` |
+| 005-AC6 | Cumple | `AC6_RivalNotInGroup_OpenToGroup_WithMembersToChoose` |
+| 005-AC7, AC8 | Cumple | `AC7_AC8_NoRivalNoGame_AndMoneyReward_GoToMissingFields` |
+| 005-AC9 | Cumple | `AC9_SixthRequestInAMinute_429WithRetryAfter` |
+| 005-AC10 | Cumple | `AC10_SamePhraseTwice_ProviderCalledOnce_SecondIsCached` |
+| 005-AC11 | Cumple | `AC11_NotConfigured503_Slow503_CircuitOpensAfter5Failures` |
+| 005-AC12 | Cumple | `AC12_CreateWithSourceVoice_StoresOriginalPhrase_ManualWithPhrase422` |
+| 005-AC13 | Cumple | `AC13_LogsDoNotContainThePhrase` |
+| 005-T9 (adaptador) | Listo para conectar | `T9_OpenAiCompatibleProvider_SendsSystemAndUserSeparately_AndReadsTheContent` |
+
+**Cómo se conecta el modelo:** `bash scripts/configure-ai.sh` guarda en SSM `Ai__Provider=OpenAiCompatible`, `Ai__Endpoint` (URL base que expone `/chat/completions`), `Ai__Model` y la clave como `Ai__ApiKey` (SecureString); luego `bash scripts/deploy-first-time.sh` recrea las instancias, que leen esos parámetros al arrancar. Si el modelo del equipo no habla ese formato, se agrega otra implementación de `IContractDraftProvider` y nada más cambia.
+
 ## 7. Preguntas abiertas
 
 - **Q-007 Proveedor de IA:** abierta. El equipo entregará el modelo; esta spec queda completa porque el adaptador aísla al proveedor. Al fijarlo se registra la decisión y solo cambia la implementación de `IContractDraftProvider` y su configuración.
@@ -124,6 +144,7 @@ Adaptador: `IContractDraftProvider.CompleteAsync(systemPrompt, userData, ct) →
 - **005-D1:** los campos que no cumplen las reglas de CON-01 se devuelven vacíos en vez de corregirse (la IA no decide por la persona).
 - **005-D2:** timeout de 8 s y un solo reintento solo cuando el JSON no cumple el esquema; un timeout no se reintenta.
 - **005-D3:** circuit breaker de 5 fallos seguidos con apertura de 60 s, local por instancia.
+- **005-D4 (2026-11-12, F2-D73):** el adaptador inicial es genérico para APIs compatibles con OpenAI (`/chat/completions`, temperatura 0, salida JSON), porque así hablan Groq, OpenRouter, Mistral, Ollama y Gemini; sin `Ai:Provider` responde 503. La caché guarda la salida ya validada del modelo (no la frase) y el rival se vuelve a emparejar con los miembros de ese momento. El límite diario se cuenta por día UTC y `Retry-After` dice los segundos hasta medianoche UTC. Si el modelo envuelve el JSON en un bloque de código se quita la envoltura, pero el contenido no se corrige. La frase de `original_phrase` también pasa por moderación porque la ven los miembros del grupo.
 
 ## 10. Plan de pruebas
 
