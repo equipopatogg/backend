@@ -18,6 +18,7 @@ namespace Pactogg.Api.Modules.Groups;
 public sealed class GroupService
 {
     private const string InviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private readonly Pactogg.Api.Modules.Tournaments.MatchService _matches;
     private readonly IGroupRepository _groups;
     private readonly IGroupMemberRepository _members;
     private readonly IUserRepository _users;
@@ -37,8 +38,10 @@ public sealed class GroupService
         IOptions<AuthOptions> authOptions,
         IModerationService moderation,
         IContractRepository contracts,
-        NotificationService notifications)
+        NotificationService notifications,
+        Pactogg.Api.Modules.Tournaments.MatchService matches)
     {
+        _matches = matches;
         _groups = groups;
         _members = members;
         _users = users;
@@ -377,7 +380,9 @@ public sealed class GroupService
         var (members, _) = await _members.ListByGroupAsync(group.Id, null, 50, null, cancellationToken);
         await _members.DeactivateAllAsync(group.Id, now, cancellationToken);
         await _groups.SoftDeleteAsync(group.Id, now, cancellationToken);
-        await _audit.AppendAsync("group.deleted", userId, "group", group.Id, group.Id, new { cancelled_contracts = cancelled }, cancellationToken);
+        // 010-R16: los torneos en curso que se quedan con menos de 2 grupos se cancelan con devolución.
+        var cancelledTournaments = await _matches.OnGroupDeletedAsync(group.Id, userId, cancellationToken);
+        await _audit.AppendAsync("group.deleted", userId, "group", group.Id, group.Id, new { cancelled_contracts = cancelled, cancelled_tournaments = cancelledTournaments }, cancellationToken);
         await InvalidateAsync(group, members.Select(x => x.UserId).ToArray());
     }
 

@@ -10,7 +10,8 @@ public static class ErrorResponseWriter
         string code,
         string message,
         object? details = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? retryAfterSeconds = null)
     {
         if (context.Response.HasStarted)
         {
@@ -20,6 +21,11 @@ public static class ErrorResponseWriter
         context.Response.Clear();
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json; charset=utf-8";
+        if (retryAfterSeconds is > 0)
+        {
+            context.Response.Headers["Retry-After"] = retryAfterSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         var requestId = context.Items["request_id"]?.ToString() ?? context.TraceIdentifier;
         await context.Response.WriteAsJsonAsync(new
         {

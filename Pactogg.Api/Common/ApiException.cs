@@ -14,6 +14,9 @@ public sealed class ApiException : Exception
     public string Code { get; }
     public object? Details { get; }
 
+    /// <summary>Segundos para la cabecera Retry-After en respuestas 429 lanzadas desde un servicio.</summary>
+    public int? RetryAfterSeconds { get; init; }
+
     public static ApiException BadRequest(string code, string message, object? details = null) =>
         new(StatusCodes.Status400BadRequest, code, message, details);
 

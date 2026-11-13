@@ -26,7 +26,7 @@ public sealed class ErrorHandlingMiddleware
         }
         catch (ApiException ex)
         {
-            await ErrorResponseWriter.WriteAsync(context, ex.StatusCode, ex.Code, ex.Message, ex.Details);
+            await ErrorResponseWriter.WriteAsync(context, ex.StatusCode, ex.Code, ex.Message, ex.Details, retryAfterSeconds: ex.RetryAfterSeconds);
         }
         catch (BadHttpRequestException ex)
         {

@@ -220,6 +220,39 @@ public sealed class MongoTournamentRepository : ITournamentRepository
         return result.Tournament;
     }
 
+    public async Task<Tournament?> FinishAsync(ObjectId id, ObjectId winnerGroupId, IReadOnlyList<(ObjectId UserId, int Amount)> prizes, DateTime now, CancellationToken cancellationToken)
+    {
+        var result = await InTransactionAsync(async session =>
+        {
+            var finished = await _context.Tournaments.FindOneAndUpdateAsync(
+                session,
+                Builders<Tournament>.Filter.Eq(x => x.Id, id) & Builders<Tournament>.Filter.Eq(x => x.Status, "in_progress"),
+                Builders<Tournament>.Update
+                    .Set(x => x.Status, "finished")
+                    .Set(x => x.WinnerGroupId, winnerGroupId)
+                    .Set(x => x.FinishedAt, now)
+                    .Set(x => x.UpdatedAt, now),
+                new FindOneAndUpdateOptions<Tournament> { ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+            if (finished is null)
+            {
+                return new TournamentWriteResult(TournamentWriteOutcome.StateChanged, null);
+            }
+
+            foreach (var (userId, amount) in prizes.Where(x => x.Amount > 0))
+            {
+                await CreditAsync(session, winnerGroupId, userId, amount, id, now, cancellationToken, "tournament_prize");
+            }
+
+            return new TournamentWriteResult(TournamentWriteOutcome.Ok, finished);
+        }, cancellationToken);
+        return result.Tournament;
+    }
+
+    public async Task<IReadOnlyList<Tournament>> ListActiveForGroupAsync(ObjectId groupId, CancellationToken cancellationToken) =>
+        await _context.Tournaments.Find(Builders<Tournament>.Filter.AnyEq(x => x.Participants, groupId) & Builders<Tournament>.Filter.In(x => x.Status, ActiveStatuses))
+            .ToListAsync(cancellationToken);
+
     public async Task<Tournament?> StartAsync(ObjectId id, IReadOnlyList<ObjectId> expectedParticipants, IReadOnlyList<Match> matches, DateTime now, CancellationToken cancellationToken)
     {
         var result = await InTransactionAsync(async session =>
@@ -264,7 +297,7 @@ public sealed class MongoTournamentRepository : ITournamentRepository
     }
 
     /// <summary>Movimiento compensatorio: devuelve la inscripción con tournament_entry positivo (F2-D66).</summary>
-    private async Task CreditAsync(IClientSessionHandle session, ObjectId groupId, ObjectId userId, int amount, ObjectId tournamentId, DateTime now, CancellationToken cancellationToken)
+    private async Task CreditAsync(IClientSessionHandle session, ObjectId groupId, ObjectId userId, int amount, ObjectId tournamentId, DateTime now, CancellationToken cancellationToken, string type = "tournament_entry")
     {
         var member = await _context.GroupMembers.FindOneAndUpdateAsync(
             session,
@@ -274,11 +307,11 @@ public sealed class MongoTournamentRepository : ITournamentRepository
             cancellationToken);
         if (member is not null)
         {
-            await InsertLedgerAsync(session, groupId, userId, amount, member.PointsBalance, tournamentId, now, cancellationToken);
+            await InsertLedgerAsync(session, groupId, userId, amount, member.PointsBalance, tournamentId, now, cancellationToken, type);
         }
     }
 
-    private Task InsertLedgerAsync(IClientSessionHandle session, ObjectId groupId, ObjectId userId, int amount, int balanceAfter, ObjectId tournamentId, DateTime now, CancellationToken cancellationToken) =>
+    private Task InsertLedgerAsync(IClientSessionHandle session, ObjectId groupId, ObjectId userId, int amount, int balanceAfter, ObjectId tournamentId, DateTime now, CancellationToken cancellationToken, string type = "tournament_entry") =>
         _context.PointsLedger.InsertOneAsync(
             session,
             new PointsLedgerEntry
@@ -286,7 +319,7 @@ public sealed class MongoTournamentRepository : ITournamentRepository
                 Id = ObjectId.GenerateNewId(),
                 GroupId = groupId,
                 UserId = userId,
-                Type = "tournament_entry",
+                Type = type,
                 Amount = amount,
                 RefType = "tournament",
                 RefId = tournamentId,

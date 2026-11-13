@@ -25,7 +25,12 @@ public sealed class CreateContractRequest
 
     public string? TargetId { get; set; }
 
+    /// <summary>manual o voice (spec 005-R14).</summary>
     public string Source { get; set; } = "manual";
+
+    /// <summary>Frase dictada (máx. 300), solo con source=voice.</summary>
+    [StringLength(300)]
+    public string? OriginalPhrase { get; set; }
 }
 
 /// <summary>CON-04: cambios parciales mientras nadie lo haya aceptado. version es obligatoria (bloqueo optimista).</summary>
@@ -58,6 +63,8 @@ public sealed class ContractResponse
     public string Game { get; init; } = string.Empty;
     public string Condition { get; init; } = string.Empty;
     public string Reward { get; init; } = string.Empty;
+    public string Source { get; init; } = "manual";
+    public string? OriginalPhrase { get; init; }
     public DateTime Deadline { get; init; }
     public int BondRequired { get; init; }
     public string Status { get; init; } = string.Empty;

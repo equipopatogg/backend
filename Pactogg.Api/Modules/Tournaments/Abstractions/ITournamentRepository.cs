@@ -51,6 +51,15 @@ public interface ITournamentRepository
     /// <summary>TOR-05 y 010-R16 en una transacción: cancela, devuelve todas las inscripciones activas y cancela las partidas abiertas.</summary>
     Task<Tournament?> CancelAsync(ObjectId id, string reason, DateTime now, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// 010-R14 en una transacción: in_progress → finished con el grupo campeón y acredita cada premio (tournament_prize)
+    /// a su representante en el grupo campeón. Null si ya no estaba en curso.
+    /// </summary>
+    Task<Tournament?> FinishAsync(ObjectId id, ObjectId winnerGroupId, IReadOnlyList<(ObjectId UserId, int Amount)> prizes, DateTime now, CancellationToken cancellationToken);
+
+    /// <summary>010-R16: torneos open o in_progress en los que participa el grupo.</summary>
+    Task<IReadOnlyList<Tournament>> ListActiveForGroupAsync(ObjectId groupId, CancellationToken cancellationToken);
+
     /// <summary>TOR-08 en una transacción: si los inscritos siguen siendo los mismos, pasa a in_progress y guarda el bracket.</summary>
     Task<Tournament?> StartAsync(ObjectId id, IReadOnlyList<ObjectId> expectedParticipants, IReadOnlyList<Match> matches, DateTime now, CancellationToken cancellationToken);
 }

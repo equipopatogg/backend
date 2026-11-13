@@ -14,8 +14,8 @@ using Pactogg.Api.Modules.Tournaments.Dtos;
 namespace Pactogg.Api.Modules.Tournaments;
 
 /// <summary>
-/// Spec 010 (torneos entre grupos): TOR-01..08 y las lecturas MAT-01, MAT-02 y MAT-07.
-/// Reportar, confirmar, disputar y resolver partidas, el premio y TOR-09 van en el siguiente bloque.
+/// Spec 010 (torneos entre grupos): TOR-01..09 y las lecturas MAT-01 y MAT-07.
+/// MAT-02..06, el premio y la cancelación automática están en <see cref="MatchService"/>.
 /// </summary>
 public sealed class TournamentService
 {
@@ -407,20 +407,6 @@ public sealed class TournamentService
             cancellationToken);
     }
 
-    /// <summary>MAT-02 (010-R9).</summary>
-    public async Task<MatchResponse> GetMatchAsync(ObjectId userId, string matchId, CancellationToken cancellationToken)
-    {
-        if (!ObjectId.TryParse(matchId, out var id))
-        {
-            throw ApiException.NotFound("La partida no existe.");
-        }
-
-        var match = await _matches.GetByIdAsync(id, cancellationToken) ?? throw ApiException.NotFound("La partida no existe.");
-        var tournament = await _tournaments.GetByIdAsync(match.TournamentId, cancellationToken) ?? throw ApiException.NotFound("La partida no existe.");
-        await RequireViewerAsync(userId, tournament, cancellationToken);
-        return ToMatch(match);
-    }
-
     /// <summary>MAT-07 (010-R15): la partida pendiente más próxima de cualquiera de mis grupos, o null.</summary>
     public async Task<NextMatchResponse?> GetNextMatchAsync(ObjectId userId, CancellationToken cancellationToken)
     {
@@ -597,13 +583,13 @@ public sealed class TournamentService
         throw ApiException.ServiceUnavailable(ErrorCodes.DatabaseUnavailable, "No se pudo generar el código del torneo; inténtalo de nuevo.");
     }
 
-    private async Task BumpAsync(ObjectId tournamentId, CancellationToken cancellationToken)
+    internal async Task BumpAsync(ObjectId tournamentId, CancellationToken cancellationToken)
     {
         await _cache.BumpVersionAsync(TournamentScope(tournamentId), cancellationToken);
         await _cache.BumpVersionAsync(ListScope, cancellationToken);
     }
 
-    private async Task NotifyGroupsAsync(IEnumerable<ObjectId> groupIds, ObjectId? exclude, string type, string title, string body, CancellationToken cancellationToken)
+    internal async Task NotifyGroupsAsync(IEnumerable<ObjectId> groupIds, ObjectId? exclude, string type, string title, string body, CancellationToken cancellationToken, string? dedupeSuffix = null)
     {
         foreach (var groupId in groupIds.Distinct())
         {
@@ -611,7 +597,7 @@ public sealed class TournamentService
             var recipients = members.Select(x => x.UserId).Where(x => x != exclude).ToArray();
             if (recipients.Length > 0)
             {
-                await _notifications.NotifyAsync(recipients, type, title, body, groupId, null, null, cancellationToken);
+                await _notifications.NotifyAsync(recipients, type, title, body, groupId, null, null, cancellationToken, dedupeSuffix);
             }
         }
     }
@@ -688,11 +674,11 @@ public sealed class TournamentService
         {
             Size = firstRound * 2,
             Rounds = ordered.Count == 0 ? 0 : ordered.Max(x => x.Round),
-            Matches = ordered.Select(ToMatch).ToList()
+            Matches = ordered.Select(x => ToMatch(x)).ToList()
         };
     }
 
-    private static MatchResponse ToMatch(Match match) => new()
+    internal static MatchResponse ToMatch(Match match, string? screenshotUrl = null) => new()
     {
         Id = match.Id.ToString(),
         TournamentId = match.TournamentId.ToString(),
@@ -706,6 +692,11 @@ public sealed class TournamentService
         Status = match.Status,
         NextMatchId = match.NextMatchId?.ToString(),
         ReportedAt = match.ReportedAt,
+        ReportedByGroupId = match.ReportedByGroupId?.ToString(),
+        DisputeReason = match.DisputeReason,
+        Resolution = match.Resolution,
+        ConfirmedAt = match.ConfirmedAt,
+        ScreenshotUrl = screenshotUrl,
         UpdatedAt = match.UpdatedAt
     };
 }

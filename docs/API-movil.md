@@ -1,6 +1,6 @@
 # API PactoGG — guía para el equipo Móvil
 
-**Actualizado:** 2026-11-04 (v0.6.1: 35 endpoints, 37 rutas contando alias) · **Contrato vinculante:** [`api/openapi.yaml`](../api/openapi.yaml) (ábrelo en <https://editor.swagger.io> → File → Import file).
+**Actualizado:** 2026-11-12 (v0.12.0; los cambios de cada versión están al final) · **Contrato vinculante:** [`api/openapi.yaml`](../api/openapi.yaml) (ábrelo en <https://editor.swagger.io> → File → Import file).
 
 ## 1. Direcciones
 
@@ -97,7 +97,7 @@ curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
 
 ## 6. Lo que todavía NO existe
 
-Reportar, confirmar, disputar y resolver partidas (MAT-03..06), invitar grupos a un torneo (TOR-09) y contrato por voz con IA (CON-08, falta la clave del modelo). El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
+Desde la v0.12.0 ya están todos los endpoints. Lo único pendiente es conectar el modelo de IA de CON-08: mientras no se configure, ese endpoint responde `503 AI_UNAVAILABLE` y la app debe ofrecer escribir el reto a mano. El push ya está en la API, pero no enviará nada hasta que se configure la cuenta de servicio de Firebase en el servidor. La lista completa (~90 endpoints) está en `CRUD_y_Endpoints_PactoGG.xlsx`. Mientras tanto, simúlenlos en la app con datos falsos detrás del repositorio.
 
 ## 7. Reglas que la app debe respetar
 
@@ -187,7 +187,7 @@ Reportar, confirmar, disputar y resolver partidas (MAT-03..06), invitar grupos a
 - **Una partida:** `GET /matches/{id}`.
 - **Mi siguiente partida:** `GET /me/matches/next` → `{ match, my_group_id, opponent_group_id, game, scheduled_at }`, o `{ "data": null }` si no hay ninguna (por ejemplo, si tu grupo pasó por bye y espera rival).
 - **Puntos:** inscribirse resta puntos con un movimiento `tournament_entry` negativo. Salir o cancelar devuelve con un `tournament_entry` positivo. Se ve en `GET /groups/{id}/points?type=tournament_entry`.
-- **Todavía no:** reportar resultado, confirmar, disputar, premio al campeón e invitar grupos desde la app. Llegan en la parte 2.
+- **Todavía no:** reportar resultado, confirmar, disputar, premio al campeón e invitar grupos desde la app. Ya llegaron en la 0.12.0 (abajo).
 
 ## Cambios 0.11.1 (2026-11-11) — El administrador puede cancelar un reto (Q-022)
 
@@ -201,3 +201,53 @@ Reportar, confirmar, disputar y resolver partidas (MAT-03..06), invitar grupos a
   - `409` si ya está en votación o terminado.
   - `422` si el motivo es muy corto, muy largo o no pasa la moderación.
 - **En la app:** muestren el botón "Cancelar reto" solo a administradores, en retos `open` o `in_progress`, y pidan el motivo. Este endpoint es distinto de `DELETE /contracts/{id}`, con el que quien publicó el reto lo cancela antes de que alguien lo acepte.
+
+## Cambios 0.12.0 (2026-11-12) — Torneos, parte 2, y contrato por voz (specs 010 y 005)
+
+### Partidas
+
+- **Reportar:** `POST /matches/{id}/report` en `multipart/form-data` con `file` (foto del resultado: JPEG, PNG o WebP, máx. 5 MB), `p1_score` y `p2_score` (0–999) → `200` con la partida en `reported`.
+  - Lo puede hacer cualquier miembro de uno de los dos grupos. Esa persona queda como representante de su grupo.
+  - Si eres de los dos grupos, manda también `group_id` para decir por cuál juegas. `winner_group_id` es opcional y debe coincidir con el marcador.
+  - No hay empates: `422 TIE_NOT_ALLOWED` (repitan la partida). La foto pasa por moderación (`422 CONTENT_REJECTED`).
+  - `409` si ya la reportaron, si falta el rival o si el torneo no está en curso.
+  - Al grupo rival le llega `tournament_match_reported`.
+- **Confirmar:** `POST /matches/{id}/confirm` → `200` en `confirmed`. Solo alguien del grupo rival (`403 NOT_MATCH_PLAYER`; quien reportó recibe `403 CANNOT_CONFIRM_OWN_REPORT`). El ganador aparece en su lugar de la siguiente partida.
+- **Disputar:** `POST /matches/{id}/dispute` con `{ reason }` (5–140, moderado) → `200` en `disputed`. Solo el grupo rival. Al organizador le llega `tournament_match_disputed`.
+- **Resolver (organizador):** `POST /matches/{id}/resolve` con `{ winner_group_id, reason? }`.
+  - Sirve si hay disputa, si el reporte lleva 24 h sin respuesta (antes, `409 REPORT_TOO_RECENT`) o por abandono (nadie reportó).
+  - Si uno de sus grupos juega esa partida, `409 ORGANIZER_PLAYS_MATCH`. Si no es el organizador, `403 NOT_TOURNAMENT_ORGANIZER`.
+  - A los dos grupos les llega `tournament_match_resolved`. `resolution` dice cómo se cerró: `confirmed_by_rival`, `resolved_dispute`, `resolved_no_answer` o `abandonment`.
+- **Detalle:** `GET /matches/{id}` ahora trae `screenshot_url` (la foto, válida 15 min), `reported_by_group_id`, `dispute_reason`, `resolution` y `confirmed_at`.
+- **En la app:** al grupo que reportó muéstrenle "Esperando al rival". Al grupo rival, los botones "Confirmar" y "Disputar" con la foto. Al organizador, "Resolver" en partidas `disputed`, `reported` con más de 24 h o `pending`.
+
+### Final y premio
+
+- Cuando se confirma o resuelve la final, el torneo pasa a `finished` con `winner_group_id`.
+- La bolsa se reparte en partes iguales entre quienes jugaron por el grupo campeón (reportaron, confirmaron o disputaron en alguna partida). Si sobra, se lo lleva el primero que jugó. Si nadie del campeón jugó (ganó solo por resoluciones del organizador), la bolsa va a quien pagó su inscripción.
+- Cada uno ve un movimiento `tournament_prize` en `GET /groups/{id}/points` y recibe el trofeo `campeon_torneo`. A todos los grupos les llega `tournament_finished`.
+
+### Invitar grupos
+
+- `POST /tournaments/{id}/invite` con `{ group_ids: [...] }` → `200 { invited, skipped: [{ group_id, reason }], code }`. Solo el organizador y con el torneo `open`.
+- Solo se avisa (`tournament_invite`, con el código) a los administradores de grupos donde el organizador también es miembro. Los demás salen en `skipped` con `not_member`: a ellos compártanles el `code` por fuera de la app. También `already_joined` y `not_found`.
+
+### Cancelación automática
+
+- Si se borra un grupo y un torneo en curso se queda con menos de 2 grupos, el torneo se cancela solo (`cancel_reason: "not_enough_groups"`), se devuelven las inscripciones y llega `tournament_cancelled`.
+
+### Contrato por voz (CON-08)
+
+- La app transcribe la voz en el celular (SpeechRecognizer o ML Kit) y manda solo el texto. **Nunca manden audio.**
+- `POST /groups/{gid}/contracts/parse` con `{ phrase }` (1–300 caracteres) → `200` con un borrador que la persona revisa:
+  `{ target_type, target_id?, target_nickname?, game, condition, reward, missing_fields, rival_unmatched, members?, cached }`.
+  - Si el rival no coincide con nadie del grupo: `target_type: "group"`, `rival_unmatched: true` y `members: [{ id, nickname }]` para que la persona elija.
+  - Los campos que vienen vacíos están en `missing_fields` (por ejemplo `game`, o `reward` si mencionaba dinero): pídanlos en el formulario.
+- Después se lanza con CON-01 de siempre, agregando `source: "voice"` y `original_phrase` (la frase, máx. 300). Con `source: "manual"`, `original_phrase` no se manda (si se manda, `422`). La respuesta del reto ahora trae `source` y `original_phrase`.
+- **Errores:**
+  - `403 NOT_GROUP_MEMBER`.
+  - `422 VALIDATION_ERROR` si la frase está vacía o es muy larga.
+  - `422 AI_PARSE_FAILED` si no se entendió: pidan decirlo de otra forma o escribirlo.
+  - `429 RATE_LIMITED`: 5 por minuto y 20 por día; respeten la cabecera `Retry-After`.
+  - `503 AI_UNAVAILABLE`: la IA no está conectada o no respondió. **Ofrezcan siempre escribir el reto a mano.**
+- **Estado:** el endpoint ya está en la API, pero falta conectar el modelo. Hasta entonces responde `503 AI_UNAVAILABLE`, así que pueden programar ya el flujo y el plan B.

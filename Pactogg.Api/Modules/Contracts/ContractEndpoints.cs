@@ -120,6 +120,22 @@ public static class ContractEndpoints
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         var nested = app.MapGroup("/api/v1/groups/{gid}/contracts").WithTags("Contracts");
+
+        // CON-08 (spec 005): borrador del reto a partir de la frase dictada. No guarda nada.
+        nested.MapPost("/parse", async (
+                string gid,
+                Pactogg.Api.Modules.Contracts.Drafts.ParseContractRequest request,
+                Pactogg.Api.Modules.Contracts.Drafts.ContractDraftService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+                ApiResults.Ok(await service.ParseAsync(context.User.GetRequiredObjectId(), gid, request, cancellationToken)))
+            .RequireAuthorization()
+            .WithName("ParseContractPhrase")
+            .Produces<Pactogg.Api.Modules.Contracts.Drafts.ContractDraftResponse>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         nested.MapPost("", async (
                 string gid,
                 CreateContractRequest request,

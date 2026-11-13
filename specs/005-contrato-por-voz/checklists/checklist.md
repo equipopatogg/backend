@@ -14,5 +14,5 @@ Spec (antes de implementar):
 
 Implementación (después):
 
-- [ ] AC1–AC13 en verde.
+- [x] AC1–AC13 en verde con el proveedor falso (v0.12.0, 2026-11-12).
 - [ ] Prueba con 20 frases documentada.

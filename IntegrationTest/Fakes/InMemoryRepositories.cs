@@ -1264,6 +1264,31 @@ public sealed class InMemoryTournamentRepository : ITournamentRepository
         }
     }
 
+    public Task<Tournament?> FinishAsync(ObjectId id, ObjectId winnerGroupId, IReadOnlyList<(ObjectId UserId, int Amount)> prizes, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_tournaments)
+        {
+            if (!_tournaments.TryGetValue(id, out var t) || t.Status != "in_progress")
+            {
+                return Task.FromResult<Tournament?>(null);
+            }
+
+            t.Status = "finished";
+            t.WinnerGroupId = winnerGroupId;
+            t.FinishedAt = now;
+            t.UpdatedAt = now;
+            foreach (var (userId, amount) in prizes.Where(x => x.Amount > 0))
+            {
+                Credit(winnerGroupId, userId, amount, id, now, "tournament_prize");
+            }
+
+            return Task.FromResult<Tournament?>(Clone(t));
+        }
+    }
+
+    public Task<IReadOnlyList<Tournament>> ListActiveForGroupAsync(ObjectId groupId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Tournament>>(_tournaments.Values.Where(x => x.Participants.Contains(groupId) && x.Status is "open" or "in_progress").Select(Clone).ToList());
+
     public Task<Tournament?> StartAsync(ObjectId id, IReadOnlyList<ObjectId> expectedParticipants, IReadOnlyList<Match> matches, DateTime now, CancellationToken cancellationToken)
     {
         lock (_tournaments)
@@ -1299,7 +1324,7 @@ public sealed class InMemoryTournamentRepository : ITournamentRepository
         return true;
     }
 
-    private void Credit(ObjectId groupId, ObjectId userId, int amount, ObjectId tournamentId, DateTime now)
+    private void Credit(ObjectId groupId, ObjectId userId, int amount, ObjectId tournamentId, DateTime now, string type = "tournament_entry")
     {
         var member = _members?.Find(groupId, userId);
         if (member is null)
@@ -1309,16 +1334,16 @@ public sealed class InMemoryTournamentRepository : ITournamentRepository
 
         member.PointsBalance += amount;
         member.UpdatedAt = now;
-        AddLedger(groupId, userId, amount, member.PointsBalance, tournamentId, now);
+        AddLedger(groupId, userId, amount, member.PointsBalance, tournamentId, now, type);
     }
 
-    private void AddLedger(ObjectId groupId, ObjectId userId, int amount, int balanceAfter, ObjectId tournamentId, DateTime now) =>
+    private void AddLedger(ObjectId groupId, ObjectId userId, int amount, int balanceAfter, ObjectId tournamentId, DateTime now, string type = "tournament_entry") =>
         _ledger?.Entries.Add(new PointsLedgerEntry
         {
             Id = ObjectId.GenerateNewId(),
             GroupId = groupId,
             UserId = userId,
-            Type = "tournament_entry",
+            Type = type,
             Amount = amount,
             RefType = "tournament",
             RefId = tournamentId,
@@ -1388,6 +1413,65 @@ public sealed class InMemoryMatchRepository : IMatchRepository
         {
             return Task.FromResult(_matches.FirstOrDefault(x => x.Id == id));
         }
+    }
+
+    private Task<Match?> Mutate(ObjectId id, Func<Match, bool> when, Action<Match> apply)
+    {
+        lock (_matches)
+        {
+            var match = _matches.FirstOrDefault(x => x.Id == id);
+            if (match is null || !when(match))
+            {
+                return Task.FromResult<Match?>(null);
+            }
+
+            apply(match);
+            return Task.FromResult<Match?>(match);
+        }
+    }
+
+    public Task<Match?> TryReportAsync(ObjectId id, int p1Score, int p2Score, ObjectId winnerGroupId, ObjectId reporterId, ObjectId reporterGroupId, bool reporterIsP1, string screenshotKey, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "pending" && x.P1GroupId != null && x.P2GroupId != null, x =>
+        {
+            x.Status = "reported"; x.P1Score = p1Score; x.P2Score = p2Score; x.WinnerGroupId = winnerGroupId;
+            x.ReportedBy = reporterId; x.ReportedByGroupId = reporterGroupId; x.ReportedAt = now; x.ScreenshotKey = screenshotKey; x.UpdatedAt = now;
+            var reps = reporterIsP1 ? x.P1Representatives : x.P2Representatives;
+            if (!reps.Contains(reporterId)) reps.Add(reporterId);
+        });
+
+    public Task<Match?> TryDisputeAsync(ObjectId id, ObjectId userId, bool userIsP1, string reason, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => x.Status == "reported", x =>
+        {
+            x.Status = "disputed"; x.DisputeReason = reason; x.DisputedBy = userId; x.DisputedAt = now; x.UpdatedAt = now;
+            var reps = userIsP1 ? x.P1Representatives : x.P2Representatives;
+            if (!reps.Contains(userId)) reps.Add(userId);
+        });
+
+    public Task<Match?> TryConfirmAsync(ObjectId id, IReadOnlyCollection<string> fromStatuses, ObjectId winnerGroupId, bool clearScores, ObjectId? confirmerId, bool confirmerIsP1, ObjectId? resolvedBy, string resolution, DateTime now, CancellationToken cancellationToken) =>
+        Mutate(id, x => fromStatuses.Contains(x.Status), x =>
+        {
+            x.Status = "confirmed"; x.WinnerGroupId = winnerGroupId; x.ConfirmedAt = now; x.Resolution = resolution; x.ResolvedBy = resolvedBy; x.UpdatedAt = now;
+            if (clearScores) { x.P1Score = null; x.P2Score = null; }
+            if (confirmerId is ObjectId c)
+            {
+                var reps = confirmerIsP1 ? x.P1Representatives : x.P2Representatives;
+                if (!reps.Contains(c)) reps.Add(c);
+            }
+        });
+
+    public Task PlaceWinnerAsync(ObjectId nextMatchId, bool asP1, ObjectId groupId, DateTime now, CancellationToken cancellationToken)
+    {
+        lock (_matches)
+        {
+            var next = _matches.FirstOrDefault(x => x.Id == nextMatchId);
+            if (next is not null)
+            {
+                if (asP1) next.P1GroupId = groupId; else next.P2GroupId = groupId;
+                next.UpdatedAt = now;
+            }
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task<Match?> FindNextForGroupsAsync(IReadOnlyCollection<ObjectId> groupIds, CancellationToken cancellationToken)
@@ -1479,6 +1563,8 @@ public sealed class FakeObjectStorage : IObjectStorage
     public int PutCount => Volatile.Read(ref _putCount);
 
     public bool Exists(string objectKey) => _objects.ContainsKey(objectKey);
+
+    public IReadOnlyCollection<string> Keys => _objects.Keys.ToList();
 
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken)
     {
@@ -1891,4 +1977,54 @@ public sealed class InMemoryAchievementRepository : Pactogg.Api.Modules.Reputati
 
     public Task<IReadOnlyList<Pactogg.Api.Modules.Reputation.Achievement>> ListByUserAsync(ObjectId userId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Pactogg.Api.Modules.Reputation.Achievement>>(_items.Values.Where(x => x.UserId == userId).OrderByDescending(x => x.EarnedAt).ToList());
+}
+
+/// <summary>Proveedor de IA falso para spec 005: guarda lo que se le envió y responde lo que la prueba programe.</summary>
+public sealed class FakeDraftProvider : Pactogg.Api.Infrastructure.Ai.IContractDraftProvider
+{
+    private readonly ConcurrentQueue<string> _responses = new();
+
+    public bool IsConfigured { get; set; } = true;
+    public TimeSpan Delay { get; set; } = TimeSpan.Zero;
+    public bool Throw { get; set; }
+    public string Default { get; set; } = "{\"rival\":null,\"game\":\"Valorant\",\"condition\":\"Ganar una partida\",\"reward\":\"Unos tacos\"}";
+    public int Calls => Volatile.Read(ref _calls);
+    public string? LastSystemPrompt { get; private set; }
+    public string? LastUserData { get; private set; }
+    private int _calls;
+
+    public void Enqueue(params string[] responses)
+    {
+        foreach (var response in responses)
+        {
+            _responses.Enqueue(response);
+        }
+    }
+
+    public void Reset()
+    {
+        _responses.Clear();
+        IsConfigured = true;
+        Delay = TimeSpan.Zero;
+        Throw = false;
+        Interlocked.Exchange(ref _calls, 0);
+    }
+
+    public async Task<string> CompleteAsync(string systemPrompt, string userData, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _calls);
+        LastSystemPrompt = systemPrompt;
+        LastUserData = userData;
+        if (Delay > TimeSpan.Zero)
+        {
+            await Task.Delay(Delay, cancellationToken);
+        }
+
+        if (Throw)
+        {
+            throw new HttpRequestException("proveedor caído");
+        }
+
+        return _responses.TryDequeue(out var response) ? response : Default;
+    }
 }

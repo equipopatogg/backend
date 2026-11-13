@@ -66,6 +66,15 @@ public static class ErrorCodes
     public const string OrganizerGroupCannotLeave = "ORGANIZER_GROUP_CANNOT_LEAVE";
     public const string NotEnoughGroups = "NOT_ENOUGH_GROUPS";
     public const string TournamentAlreadyActive = "TOURNAMENT_ALREADY_ACTIVE";
+    public const string TournamentNotInProgress = "TOURNAMENT_NOT_IN_PROGRESS";
+    public const string InvalidMatchState = "INVALID_MATCH_STATE";
+    public const string NotMatchPlayer = "NOT_MATCH_PLAYER";
+    public const string CannotConfirmOwnReport = "CANNOT_CONFIRM_OWN_REPORT";
+    public const string OrganizerPlaysMatch = "ORGANIZER_PLAYS_MATCH";
+    public const string TieNotAllowed = "TIE_NOT_ALLOWED";
+    public const string ReportTooRecent = "REPORT_TOO_RECENT";
+    public const string AiParseFailed = "AI_PARSE_FAILED";
+    public const string AiUnavailable = "AI_UNAVAILABLE";
     public const string InvalidCommitmentState = "INVALID_COMMITMENT_STATE";
     public const string CannotAcceptOwnContract = "CANNOT_ACCEPT_OWN_CONTRACT";
     public const string ModerationUnavailable = "MODERATION_UNAVAILABLE";

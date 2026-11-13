@@ -51,7 +51,13 @@ public sealed class OpenApiContractTests : IClassFixture<WebApplicationFactory<P
                      "/api/v1/notifications:",
                      "/api/v1/notifications/{id}/read:",
                      "/api/v1/notifications/read-all:",
-                     "/api/v1/groups/{gid}/fame:"
+                     "/api/v1/groups/{gid}/fame:",
+                     "/api/v1/groups/{gid}/contracts/parse:",
+                     "/api/v1/matches/{id}/report:",
+                     "/api/v1/matches/{id}/confirm:",
+                     "/api/v1/matches/{id}/dispute:",
+                     "/api/v1/matches/{id}/resolve:",
+                     "/api/v1/tournaments/{id}/invite:"
                  })
         {
             text.Should().Contain(path);
