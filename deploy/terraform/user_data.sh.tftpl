@@ -100,6 +100,8 @@ done
 chmod 600 /opt/pactogg/api.env
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+# Libera las imágenes viejas antes de bajar la nueva (2026-11-13: "no space left on device").
+docker image prune -af >/dev/null 2>&1 || true
 for _ in $(seq 1 30); do
   docker pull "$IMAGE_URI" && break
   sleep 20

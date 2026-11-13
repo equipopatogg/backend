@@ -2,9 +2,10 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY global.json Directory.Build.props nuget.config ./
 COPY Pactogg.Api/Pactogg.Api.csproj Pactogg.Api/
-RUN dotnet restore Pactogg.Api/Pactogg.Api.csproj
+# Solo Linux x64: sin las librerías nativas de Windows y macOS (2026-11-13: el disco de las instancias se llenó).
+RUN dotnet restore Pactogg.Api/Pactogg.Api.csproj -r linux-x64
 COPY Pactogg.Api/ Pactogg.Api/
-RUN dotnet publish Pactogg.Api/Pactogg.Api.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
+RUN dotnet publish Pactogg.Api/Pactogg.Api.csproj -c Release -r linux-x64 --self-contained false -o /app/publish --no-restore /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
