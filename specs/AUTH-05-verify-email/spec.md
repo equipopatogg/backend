@@ -32,3 +32,10 @@
 ## 5. Criterios de aceptación
 
 `IntegrationTest/AccountAndPushTests.cs` → `AccountFlowTests.Register_SendsVerification_AndGroupsRequireVerifiedEmail`.
+
+## Enlace web de verificación (2026-11-16, F2-D75)
+
+- El enlace del correo se configura con `Email:VerifyEmailLink`. Por defecto sigue siendo `pactogg://auth/verify-email`; en producción puede apuntar a la página web publicada (`https://…/verificar-correo`), que recibe `?token=` y llama a `POST /api/v1/auth/verify-email` sin sesión.
+- La API solo acepta esa llamada desde el navegador si el origen exacto de la página está en `Cors:AllowedOrigins` (sin comodines). El endpoint, el cuerpo, la caducidad de 24 h y el uso único del token no cambian.
+- Se configura con `scripts/configure-web.sh` y aplica al recrear las instancias.
+- Pendiente de verificar en producción: correo nuevo con enlace web, verificación correcta y rechazo del token ya usado (`422 INVALID_OR_EXPIRED_TOKEN`).
