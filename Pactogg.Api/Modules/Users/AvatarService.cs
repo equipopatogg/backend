@@ -71,6 +71,8 @@ public sealed class AvatarService
         }
 
         var user = await _users.GetByIdAsync(userId, cancellationToken) ?? throw ApiException.Unauthorized();
+        // Se copia antes de actualizar: el repositorio puede devolver el mismo objeto ya modificado.
+        var oldKey = user.AvatarKey;
         var normalized = ImageProcessor.Normalize(content);
         var moderation = await _moderation.ModerateImageAsync(normalized, cancellationToken);
         if (!moderation.Approved)
@@ -90,7 +92,7 @@ public sealed class AvatarService
 
         var updated = await _users.SetAvatarPhotoAsync(userId, key, url, DateTime.UtcNow, cancellationToken)
             ?? throw ApiException.Unauthorized();
-        if (user.AvatarKey is { } oldKey && oldKey != key)
+        if (oldKey is not null && oldKey != key)
         {
             await TryDeleteAsync(oldKey);
         }
@@ -101,7 +103,7 @@ public sealed class AvatarService
             await _cache.BumpVersionAsync(CacheExtensions.GroupScope(groupId), cancellationToken);
         }
 
-        await _audit.AppendAsync("user.avatar_photo", userId, "user", userId, null, new { replaced = user.AvatarKey is not null }, cancellationToken);
+        await _audit.AppendAsync("user.avatar_photo", userId, "user", userId, null, new { replaced = oldKey is not null }, cancellationToken);
         return updated;
     }
 
