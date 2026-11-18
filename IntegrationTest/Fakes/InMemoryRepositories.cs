@@ -55,7 +55,7 @@ public sealed class InMemoryUserRepository : IUserRepository
         if (_users.TryGetValue(id, out var u))
         {
             u.Email = $"eliminado-{id}@pactogg.invalid"; u.PasswordHash = string.Empty; u.GoogleSub = null;
-            u.Nickname = "Usuario eliminado"; u.NicknameLower = $"eliminado:{id}"; u.AvatarId = "default";
+            u.Nickname = "Usuario eliminado"; u.NicknameLower = $"eliminado:{id}"; u.AvatarId = "default"; u.AvatarKey = null; u.AvatarUrl = null;
             u.Status = "deleted"; u.DeletedAt = now; u.UpdatedAt = now;
         }
 
@@ -133,6 +133,23 @@ public sealed class InMemoryUserRepository : IUserRepository
         return Task.FromResult<User?>(user);
     }
 
+    public Task<User?> SetAvatarPhotoAsync(ObjectId id, string key, string url, DateTime at, CancellationToken cancellationToken)
+    {
+        lock (_users)
+        {
+            if (!_users.TryGetValue(id, out var user))
+            {
+                return Task.FromResult<User?>(null);
+            }
+
+            user.AvatarId = "photo";
+            user.AvatarKey = key;
+            user.AvatarUrl = url;
+            user.UpdatedAt = at;
+            return Task.FromResult<User?>(user);
+        }
+    }
+
     public Task<User?> UpdateProfileAsync(ObjectId id, string? nickname, string? avatarId, DateTime at, CancellationToken cancellationToken)
     {
         lock (_users)
@@ -157,6 +174,8 @@ public sealed class InMemoryUserRepository : IUserRepository
             if (avatarId is not null)
             {
                 user.AvatarId = avatarId;
+                user.AvatarKey = null;
+                user.AvatarUrl = null;
             }
 
             user.UpdatedAt = at;

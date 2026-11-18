@@ -26,6 +26,9 @@ public sealed class ProfileResponse
     public string Email { get; init; } = string.Empty;
     public string Nickname { get; init; } = string.Empty;
     public string AvatarId { get; init; } = "default";
+
+    /// <summary>USR-07: foto de perfil cuando avatar_id es "photo".</summary>
+    public string? AvatarUrl { get; init; }
     public bool EmailVerified { get; init; }
     public UserStatsResponse Stats { get; init; } = new();
     public int GroupsCount { get; init; }
@@ -40,6 +43,7 @@ public sealed class PublicProfileResponse
     public string Id { get; init; } = string.Empty;
     public string Nickname { get; init; } = string.Empty;
     public string AvatarId { get; init; } = "default";
+    public string? AvatarUrl { get; init; }
     public UserStatsResponse Stats { get; init; } = new();
     public DateTime CreatedAt { get; init; }
 }

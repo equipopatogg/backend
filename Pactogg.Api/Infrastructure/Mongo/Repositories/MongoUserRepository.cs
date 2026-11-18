@@ -100,6 +100,17 @@ public sealed class MongoUserRepository : IUserRepository
             new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After },
             cancellationToken);
 
+    public async Task<User?> SetAvatarPhotoAsync(ObjectId id, string key, string url, DateTime at, CancellationToken cancellationToken) =>
+        await _context.Users.FindOneAndUpdateAsync(
+            Builders<User>.Filter.Where(x => x.Id == id && x.DeletedAt == null),
+            Builders<User>.Update
+                .Set(x => x.AvatarId, "photo")
+                .Set(x => x.AvatarKey, key)
+                .Set(x => x.AvatarUrl, url)
+                .Set(x => x.UpdatedAt, at),
+            new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+
     public async Task<User?> UpdateProfileAsync(
         ObjectId id,
         string? nickname,
@@ -117,7 +128,8 @@ public sealed class MongoUserRepository : IUserRepository
 
         if (avatarId is not null)
         {
-            update = update.Set(x => x.AvatarId, avatarId);
+            // Elegir un color quita la foto (USR-07); el servicio borra el objeto de S3.
+            update = update.Set(x => x.AvatarId, avatarId).Set(x => x.AvatarKey, null).Set(x => x.AvatarUrl, null);
         }
 
         try
@@ -196,6 +208,8 @@ public sealed class MongoUserRepository : IUserRepository
                 .Set(x => x.Nickname, "Usuario eliminado")
                 .Set(x => x.NicknameLower, $"eliminado:{id}")
                 .Set(x => x.AvatarId, "default")
+                .Set(x => x.AvatarKey, null)
+                .Set(x => x.AvatarUrl, null)
                 .Set(x => x.EmailVerified, false)
                 .Set(x => x.Consent, new ConsentRecord { Version = string.Empty, AcceptedAt = DateTime.MinValue })
                 .Set(x => x.Status, "deleted")

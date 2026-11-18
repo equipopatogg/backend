@@ -334,6 +334,39 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/users/me/avatar:
+    post:
+      tags: [Users]
+      operationId: uploadAvatar
+      summary: Subir foto de perfil (USR-07)
+      description: >-
+        JPEG, PNG o WebP de hasta 5 MB. Se vuelve a codificar como JPEG sin metadatos y Rekognition la revisa
+        antes de guardarla en S3 (falla cerrada). Reemplaza la foto anterior; elegir un color con PATCH users/me la quita.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Perfil con avatar_id photo y avatar_url
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/users/check-nickname:
     get:
       tags: [Users]
@@ -2912,7 +2945,8 @@ components:
         id: { type: string }
         email: { type: string }
         nickname: { type: string }
-        avatar_id: { type: string }
+        avatar_id: { type: string, description: 'Color (violet, cyan, orange…) o "photo" si subió foto (USR-07)' }
+        avatar_url: { type: string, nullable: true, description: Foto de perfil cuando avatar_id es photo }
         email_verified: { type: boolean }
         stats:
           type: object

@@ -20,14 +20,17 @@ public sealed partial class UserService
     private readonly IModerationService _moderation;
     private readonly ICacheService _cache;
     private readonly IAuditService _audit;
+    private readonly AvatarService _avatars;
 
     public UserService(
         IUserRepository users,
         IGroupMemberRepository members,
         IModerationService moderation,
         ICacheService cache,
-        IAuditService audit)
+        IAuditService audit,
+        AvatarService avatars)
     {
+        _avatars = avatars;
         _users = users;
         _members = members;
         _moderation = moderation;
@@ -57,6 +60,11 @@ public sealed partial class UserService
     /// <summary>USR-03: cambia apodo y/o avatar; el apodo es único y pasa por moderación (falla cerrada).</summary>
     public async Task<ProfileResponse> UpdateMeAsync(ObjectId userId, UpdateProfileRequest request, CancellationToken cancellationToken)
     {
+        if (request.AvatarId == AvatarService.PhotoAvatarId)
+        {
+            throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Para usar una foto súbela en POST users/me/avatar.");
+        }
+
         if (request.Nickname is null && request.AvatarId is null)
         {
             throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Envía nickname o avatar_id.");
@@ -88,9 +96,19 @@ public sealed partial class UserService
             DateTime.UtcNow,
             cancellationToken) ?? throw ApiException.Unauthorized();
 
+        if (request.AvatarId is not null && user.AvatarKey is { } oldKey)
+        {
+            await _avatars.TryDeleteAsync(oldKey);
+        }
+
         if (nicknameChanged)
         {
             await _members.UpdateNickLowerAsync(userId, updated.NicknameLower, cancellationToken);
+        }
+
+        if (nicknameChanged || request.AvatarId is not null)
+        {
+            // La lista de miembros muestra apodo y avatar: se invalida en cada grupo.
             foreach (var groupId in await _members.ListActiveGroupIdsAsync(userId, cancellationToken))
             {
                 await _cache.BumpVersionAsync(CacheExtensions.GroupScope(groupId), cancellationToken);
@@ -107,6 +125,14 @@ public sealed partial class UserService
             new { nickname_changed = nicknameChanged, avatar_changed = request.AvatarId is not null },
             cancellationToken);
 
+        var groups = await _members.CountActiveGroupsAsync(userId, cancellationToken);
+        return ToProfile(updated, groups);
+    }
+
+    /// <summary>USR-07: sube la foto de perfil (moderada) y devuelve el perfil con avatar_url.</summary>
+    public async Task<ProfileResponse> UploadAvatarAsync(ObjectId userId, byte[] content, string? contentType, CancellationToken cancellationToken)
+    {
+        var updated = await _avatars.UploadAsync(userId, content, contentType, cancellationToken);
         var groups = await _members.CountActiveGroupsAsync(userId, cancellationToken);
         return ToProfile(updated, groups);
     }
@@ -147,6 +173,7 @@ public sealed partial class UserService
                 Id = target.Id.ToString(),
                 Nickname = target.Nickname,
                 AvatarId = target.AvatarId,
+                AvatarUrl = target.AvatarUrl,
                 Stats = ToStats(target.Stats),
                 CreatedAt = target.CreatedAt
             }),
@@ -189,6 +216,7 @@ public sealed partial class UserService
         Email = user.Email,
         Nickname = user.Nickname,
         AvatarId = user.AvatarId,
+        AvatarUrl = user.AvatarUrl,
         EmailVerified = user.EmailVerified,
         Stats = ToStats(user.Stats),
         GroupsCount = groupsCount,

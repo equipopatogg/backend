@@ -30,7 +30,7 @@ El retado prueba que cumplió con una foto o un enlace. Nada inapropiado llega a
 | 007-R8 | Cuando el retado borre su evidencia antes del primer voto, el sistema deberá quitarla y borrarla de S3; si era la única, el reto vuelve a `in_progress` y se liberan los jurados (007-D2). Después del primer voto, solo el administrador del grupo puede quitarla (REP-04). | EVI-05 |
 | 007-R9 | Cuando un miembro guarde en el Muro de la Fama una foto aprobada de un reto cumplido, el sistema deberá marcarla `saved_in_fame` y quitarle la fecha de borrado; la acción es idempotente. | EVI-06 |
 | 007-R10 | Cuando una foto cumpla 30 días sin estar en el Muro de la Fama, el sistema deberá borrarla de S3 (CLARIFICACION #53). | Regla del bucket + tarea |
-| 007-R11 | Cuando se modere texto libre (condición, recompensa, juego, nombre de grupo, apodo, comentario de voto), el sistema deberá revisar primero una lista local de palabras ofensivas en español y después Comprehend (toxicidad ≥ 0.7), porque Comprehend solo evalúa inglés (007-D3). | Todas las de texto |
+| 007-R11 | Cuando se modere texto libre (condición, recompensa, juego, nombre de grupo, apodo, comentario de voto), el sistema deberá revisar primero una lista local de palabras ofensivas en español y después Comprehend, porque Comprehend solo evalúa inglés (007-D3). Enmienda 2026-11-17 (F2-D76): `VIOLENCE_OR_THREAT` no rechaza sola porque es vocabulario de videojuegos; rechazan las demás etiquetas ≥ 0.7 o la toxicidad ≥ 0.9 con otra señal ≥ 0.5. | Todas las de texto |
 
 ## 4. Requisitos no funcionales
 
@@ -53,6 +53,7 @@ EVI-02 `POST /contracts/{id}/evidence` (multipart `file` o JSON `{type:"link", u
 | 007-AC7 | R9 | Guardar en la Fama dos veces → 200 ambas; foto de reto no cumplido → 409 | `Spec007EvidenceTests.AC7_SaveInFame_OnlyFulfilled_IsIdempotent_AndMovesPhotoOutOfThe30DayRule` |
 | 007-AC8 | R10 | Regla de 30 días en el bucket excluye las fotos de la Fama | `Spec007EvidenceTests.AC8_PhotosOlderThan30Days_AreDeleted_ExceptTheOnesInTheFame` y regla `aws_s3_bucket_lifecycle_configuration` en `deploy/terraform/storage.tf` |
 | 007-AC9 | R11 | Una grosería en español en la condición → 422 sin llamar a Comprehend | `Spec007EvidenceTests.AC9_SpanishTerm_IsRejectedBeforeComprehend` |
+| 007-AC9b | R11 | "20 kills con sniper" se acepta aunque Comprehend marque violencia; un insulto se rechaza | `TextModerationPolicyTests` |
 
 ## 7. Decisiones (aprobadas por el PO el 2026-11-07)
 

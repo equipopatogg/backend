@@ -22,6 +22,9 @@ public interface IUserRepository
 
     Task<User?> UpdateProfileAsync(ObjectId id, string? nickname, string? avatarId, DateTime at, CancellationToken cancellationToken);
 
+    /// <summary>USR-07: pone la foto de perfil (avatar_id = "photo"). Devuelve el usuario con la foto nueva.</summary>
+    Task<User?> SetAvatarPhotoAsync(ObjectId id, string key, string url, DateTime at, CancellationToken cancellationToken);
+
     /// <summary>
     /// Spec 008-R12: suma los contadores y recalcula stats.word_index con <see cref="Pactogg.Api.Modules.Reputation.WordIndexCalculator"/>.
     /// Con <see cref="StatsDelta.None"/> solo recalcula (después de cerrar un reto). Devuelve las estadísticas nuevas.
