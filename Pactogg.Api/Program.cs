@@ -312,6 +312,7 @@ builder.Services.AddScoped<EvidenceService>();
 builder.Services.AddScoped<TournamentService>();
 builder.Services.AddScoped<MatchService>();
 builder.Services.AddScoped<Pactogg.Api.Modules.Contracts.Drafts.ContractDraftService>();
+builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<Pactogg.Api.Modules.Users.AccountDeletionService>();
 builder.Services.AddScoped<GroupAccess>();

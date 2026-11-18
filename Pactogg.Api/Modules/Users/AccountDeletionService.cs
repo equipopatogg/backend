@@ -102,6 +102,20 @@ public sealed class AccountDeletionService
             }
         }
 
+        // 2b. Foto de perfil (USR-07).
+        var profile = await _users.GetByIdAsync(userId, cancellationToken);
+        if (profile?.AvatarKey is string avatarKey)
+        {
+            try
+            {
+                await _storage.DeleteAsync(avatarKey, cancellationToken);
+            }
+            catch (ApiException)
+            {
+                _logger.LogWarning("No se pudo borrar la foto de perfil al eliminar una cuenta.");
+            }
+        }
+
         // 3. Comentarios de voto, compromisos, avisos, bloqueos y dispositivos.
         await _votes.ClearCommentsByJurorAsync(userId, cancellationToken);
         await _commitments.CloseOpenForUserAsync(userId, now, cancellationToken);

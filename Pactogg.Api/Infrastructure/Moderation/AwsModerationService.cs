@@ -74,18 +74,15 @@ public sealed class AwsModerationService : IModerationService
                 TextSegments = [new TextSegment { Text = text }]
             }, cancellationToken);
 
-            var labels = response.ResultList
+            var results = response.ResultList ?? [];
+            var labels = results
                 .SelectMany(result => result.Labels ?? [])
-                .Where(label => label.Score >= 0.7f)
-                .Select(label => label.Name.ToString())
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                .Where(label => label.Name is not null)
+                .Select(label => (label.Name.ToString(), label.Score ?? 0f));
+            var toxicity = results.Select(result => result.Toxicity ?? 0f).DefaultIfEmpty(0f).Max();
 
-            var toxic = response.ResultList.Any(result => result.Toxicity >= 0.7f);
-            return !toxic && labels.Length == 0
-                ? ModerationResult.Allow()
-                : ModerationResult.Reject(labels!);
+            // F2-D76: VIOLENCE_OR_THREAT no decide sola, porque en una app de videojuegos "kills" es normal.
+            return TextModerationPolicy.Evaluate(labels, toxicity);
         }
         catch (AmazonServiceException)
         {

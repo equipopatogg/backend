@@ -28,6 +28,13 @@ public sealed class User
     [BsonElement("avatar_id")]
     public string AvatarId { get; set; } = "default";
 
+    /// <summary>USR-07 (2026-11-17): foto de perfil moderada en S3 (avatars/). Null si usa un color.</summary>
+    [BsonElement("avatar_key")]
+    public string? AvatarKey { get; set; }
+
+    [BsonElement("avatar_url")]
+    public string? AvatarUrl { get; set; }
+
     [BsonElement("email_verified")]
     public bool EmailVerified { get; set; }
 

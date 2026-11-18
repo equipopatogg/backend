@@ -54,6 +54,7 @@ public sealed class GroupMemberResponse
     public string UserId { get; init; } = string.Empty;
     public string Nickname { get; init; } = string.Empty;
     public string AvatarId { get; init; } = "default";
+    public string? AvatarUrl { get; init; }
     public string Role { get; init; } = "member";
     public int PointsBalance { get; init; }
     public DateTime JoinedAt { get; init; }

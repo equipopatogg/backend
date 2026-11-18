@@ -31,6 +31,43 @@ public static class UserEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        // USR-07: multipart con "file" (JPEG, PNG o WebP). Rekognition la revisa antes de guardarla.
+        group.MapPost("/me/avatar", async (UserService service, AvatarService avatars, HttpContext context, CancellationToken cancellationToken) =>
+            {
+                if (!context.Request.HasFormContentType)
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Envía multipart/form-data con file.");
+                }
+
+                IFormCollection form;
+                try
+                {
+                    form = await context.Request.ReadFormAsync(cancellationToken);
+                }
+                catch (InvalidDataException)
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ImageTooLarge, "La imagen supera el tamaño permitido.");
+                }
+
+                var file = form.Files.GetFile("file")
+                    ?? throw ApiException.Unprocessable(ErrorCodes.ValidationError, "Falta la foto (file).");
+                if (file.Length <= 0 || file.Length > avatars.MaxBytes)
+                {
+                    throw ApiException.Unprocessable(ErrorCodes.ImageTooLarge, "La imagen supera el tamaño permitido.");
+                }
+
+                await using var stream = file.OpenReadStream();
+                using var memory = new MemoryStream();
+                await stream.CopyToAsync(memory, cancellationToken);
+                return ApiResults.Ok(await service.UploadAvatarAsync(
+                    context.User.GetRequiredObjectId(), memory.ToArray(), file.ContentType, cancellationToken));
+            })
+            .RequireAuthorization()
+            .WithName("UploadAvatar")
+            .Produces<ProfileResponse>()
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         group.MapDelete("/me", async ([Microsoft.AspNetCore.Mvc.FromBody] DeleteAccountRequest request, AccountDeletionService service, HttpContext context, CancellationToken cancellationToken) =>
             {
                 await service.DeleteAsync(context.User, request, cancellationToken);
