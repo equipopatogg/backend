@@ -89,6 +89,8 @@ public sealed partial class UserService
             }
         }
 
+        // Se copia antes de actualizar: el repositorio puede devolver el mismo objeto ya modificado.
+        var oldAvatarKey = user.AvatarKey;
         var updated = await _users.UpdateProfileAsync(
             userId,
             nicknameChanged ? nickname : null,
@@ -96,7 +98,7 @@ public sealed partial class UserService
             DateTime.UtcNow,
             cancellationToken) ?? throw ApiException.Unauthorized();
 
-        if (request.AvatarId is not null && user.AvatarKey is { } oldKey)
+        if (request.AvatarId is not null && oldAvatarKey is { } oldKey)
         {
             await _avatars.TryDeleteAsync(oldKey);
         }
