@@ -61,6 +61,7 @@ TOR-01..09, MAT-01..07 (rutas en la lista de endpoints). Esquemas: `CreateTourna
 | 010-AC6 | R14 | Final confirmada → `finished`, bolsa repartida, suma de premios = bolsa, trofeo a los que jugaron |
 | 010-AC7 | R4, R16 | Cancelar → todos recuperan su inscripción (movimientos compensatorios) |
 | 010-AC8 | R2, R9, R15 | Ajeno al torneo → 403; siguiente partida correcta para un miembro |
+| 010-AC9 | R8 | Invitar a grupos: solo se avisa a los administradores de grupos donde el organizador es miembro; el resto recibe el código fuera de la app (agregado en la validación del 2026-11-18) | `Spec010MatchTests.R8_Invite_OnlyNotifiesAdminsOfGroupsWhereTheOrganizerIsMember` |
 
 ### Evidencia (v0.11.0)
 

@@ -52,3 +52,8 @@ output "log_group" {
   description = "Grupo de CloudWatch Logs (observabilidad)."
   value       = aws_cloudwatch_log_group.api.name
 }
+
+output "alarms_topic" {
+  description = "Tema SNS que recibe las alarmas de CloudWatch."
+  value       = aws_sns_topic.alarms.arn
+}

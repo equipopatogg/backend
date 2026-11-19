@@ -163,3 +163,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "alarm_email" {
+  description = "Correo que recibe las alarmas de CloudWatch (vacío = solo se ven en la consola). AWS manda un correo de confirmación."
+  type        = string
+  default     = ""
+}
