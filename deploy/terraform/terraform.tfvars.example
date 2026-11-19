@@ -15,3 +15,6 @@ github_branch      = "main"
 github_environment = "production"
 
 # cors_allowed_origins = ["https://app.pactogg.example.com"]
+
+# Correo para las alarmas de CloudWatch (opcional). AWS manda un correo para confirmar la suscripción.
+# alarm_email = "equipo@example.com"

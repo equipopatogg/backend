@@ -126,7 +126,7 @@ Adaptador: `IContractDraftProvider.CompleteAsync(systemPrompt, userData, ct) →
 
 ## 7. Preguntas abiertas
 
-- **Q-007 Proveedor de IA:** abierta. El equipo entregará el modelo; esta spec queda completa porque el adaptador aísla al proveedor. Al fijarlo se registra la decisión y solo cambia la implementación de `IContractDraftProvider` y su configuración.
+- **Q-007 Proveedor de IA:** cerrada el 2026-11-18 (F2-D78): Groq con `openai/gpt-oss-20b` por `OpenAiCompatibleDraftProvider`, clave en SSM. El repositorio de IA del equipo no entregó un modelo de voz. No hay otras preguntas abiertas.
 
 ## 8. Verificación contra la constitución
 

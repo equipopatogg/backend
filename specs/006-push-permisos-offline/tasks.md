@@ -17,9 +17,9 @@ Backend (David M.):
 
 Móvil (Diego S. y José G.):
 
-- [ ] 006-T11 — Parte móvil de la spec: permisos en contexto y manejo de negados (micrófono, notificaciones, cámara).
-- [ ] 006-T12 — Room con la última copia del tablero, compromisos, miembros y perfil; WorkManager con 5 reintentos.
-- [ ] 006-T13 — Registrar el token al iniciar sesión y llamar DEV-02 al cerrarla.
+- [x] 006-T11 — Parte móvil de la spec: permisos en contexto y manejo de negados (micrófono, notificaciones, cámara). Hecho en la app (PL-10 y nota de PL-12).
+- [x] 006-T12 — Room con la última copia del tablero, compromisos, miembros y perfil; WorkManager con 5 reintentos. Hecho en la app como lectura sin conexión (PL-12): las acciones no se encolan para no repetir cobros de fianza ni votos.
+- [x] 006-T13 — Registrar el token al iniciar sesión y llamar DEV-02 al cerrarla. Hecho en la app (PL-10).
 
 ## Definición de terminado
 

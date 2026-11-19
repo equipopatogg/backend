@@ -10,7 +10,7 @@
 - [x] 005-T6 — Ruta CON-08, OpenAPI y guía móvil; 005-R1, R2.
 - [x] 005-T7 — CON-01 con `source=voice` y `original_phrase`; 005-R14; 005-AC12.
 - [x] 005-T8 — Revisar logs sin frase; 005-R15; 005-AC13.
-- [ ] 005-T9 — Proveedor real cuando el equipo entregue el modelo (Q-007) y clave en SSM (filas 73 y 82). Adaptador `OpenAiCompatibleDraftProvider` listo y probado; falta la configuración.
+- [x] 005-T9 — Proveedor real cuando el equipo entregue el modelo (Q-007) y clave en SSM (filas 73 y 82). Adaptador `OpenAiCompatibleDraftProvider` listo y probado; falta la configuración.
 - [ ] 005-T10 — Prueba con 20 frases de ejemplo y ajuste del prompt (fila 74).
 
 ## Definición de terminado
