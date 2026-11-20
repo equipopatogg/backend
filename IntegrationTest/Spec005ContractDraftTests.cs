@@ -235,7 +235,10 @@ public sealed class Spec005ContractDraftTests : IClassFixture<PactoggWebFactory>
         var marker = "frase-secreta-" + Guid.NewGuid().ToString("N");
         var original = Console.Out;
         using var capture = new StringWriter();
-        Console.SetOut(capture);
+        // El logger de consola escribe desde otro hilo: un StringWriter sin sincronizar se corrompe
+        // (ArgumentOutOfRangeException en ToString). Synchronized bloquea cada escritura sobre "synced".
+        var synced = TextWriter.Synchronized(capture);
+        Console.SetOut(synced);
         try
         {
             _factory.Ai.Enqueue("no json", "tampoco");
@@ -249,7 +252,11 @@ public sealed class Spec005ContractDraftTests : IClassFixture<PactoggWebFactory>
             _factory.Ai.Throw = false;
         }
 
-        var logs = capture.ToString();
+        string logs;
+        lock (synced)
+        {
+            logs = capture.ToString();
+        }
         logs.Should().Contain("contracts/parse", "la captura sí recibió los logs de esas peticiones");
         logs.Should().NotContain(marker);
         logs.Should().NotContain("no json");
