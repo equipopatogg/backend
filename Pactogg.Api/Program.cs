@@ -110,6 +110,8 @@ if (Encoding.UTF8.GetByteCount(jwtOptions.SigningKey) < 32)
 
 builder.Services.Configure<MongoOptions>(builder.Configuration.GetSection(MongoOptions.SectionName));
 builder.Services.Configure<RedisOptions>(builder.Configuration.GetSection(RedisOptions.SectionName));
+// En producción la revocación de tokens no puede caer a memoria local (cada instancia vería algo distinto).
+builder.Services.PostConfigure<RedisOptions>(options => options.Required |= builder.Environment.IsProduction());
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<EvidenceOptions>(builder.Configuration.GetSection(EvidenceOptions.SectionName));
@@ -367,7 +369,7 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.MapGet("/", () => ApiResults.Ok(new
 {
     service = "PactoGG API",
-    version = "0.12.1",
+    version = "1.0.0",
     status = "ok"
 })).AllowAnonymous();
 

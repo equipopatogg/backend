@@ -1,18 +1,18 @@
 # Plan de pruebas y casos de prueba — PactoGG Backend
 
-**Versión:** 0.6.1 · **Fecha:** 2026-11-04 · **Responsable de calidad:** José G. · **Alcance:** API `Pactogg.Api` (34 endpoints + `/health`).
+**Versión:** 1.0.0 · **Fecha:** 2026-11-19 · **Responsable de calidad:** José G. · **Alcance:** API `Pactogg.Api` (96 operaciones: 94 en `/api/v1` + `/health` y `/health/ready`). La relación de cada endpoint con sus pruebas está en [matriz-pruebas-endpoints.md](matriz-pruebas-endpoints.md).
 
 ## 1. Estrategia
 
 | Nivel | Proyecto | Qué cubre | Herramienta | Cuándo corre |
 |---|---|---|---|---|
-| Unitarias | `UnitTest` | Reglas puras: recompensa sin dinero, enlaces permitidos, política de moderación de imágenes, procesado de imágenes, Argon2, Google sin configurar | xUnit + FluentAssertions | Cada PR y push |
+| Unitarias | `UnitTest` | Reglas puras (recompensa sin dinero, enlaces, moderación de texto e imágenes, procesado de imágenes, Argon2, Google, votación, push, Índice de Palabra) y servicios por módulo con repositorios en memoria (avisos, puntos, compromisos, Fama, reportes/bloqueos, auditoría, revocación de tokens) | xUnit + FluentAssertions | Cada PR y push |
 | Integración | `IntegrationTest` | Flujos HTTP completos con la API en memoria (`WebApplicationFactory`) y repositorios falsos | xUnit | Cada PR y push |
-| Seguridad | `SecurityTest` | 401 sin token o con token falso en todas las rutas protegidas; cabeceras de seguridad | xUnit | Cada PR y push |
+| Seguridad | `SecurityTest` | Barrido de las rutas registradas: 401 sin token y con token falsificado en cada ruta protegida, toda ruta con decisión de autorización explícita, solo `auth/*` y `check-nickname` anónimos; salud sin fugas; cabeceras de seguridad | xUnit | Cada PR y push |
 | Contrato | `ContractTest` | `api/openapi.yaml` y Swagger documentan las rutas | xUnit | Cada PR y push |
 | Base de datos | `DatabaseTest` | Índices en un MongoDB real (Testcontainers) | xUnit + Docker | Si hay Docker |
-| Mutación | `MutationTest` | Configuración de Stryker.NET (umbral pendiente) | Stryker | Manual |
-| Rendimiento | `PerformanceTest` | Prueba base del flujo (carga real pendiente) | xUnit | Cada PR |
+| Mutación | `MutationTest` | Stryker.NET sobre `Modules`, `Common` e `Infrastructure` con umbral de corte 60 % (`stryker-config.json`) | Stryker (`dotnet stryker`) | Manual antes de cada versión |
+| Rendimiento | `PerformanceTest` | Flujo base y presupuesto de latencia (200 peticiones concurrentes, p95 < 500 ms en memoria); carga contra AWS con NBomber | xUnit + NBomber | Cada PR |
 | SAST | — | CodeQL y Semgrep (C#, secretos, OWASP) | GitHub Actions | Cada PR |
 | SCA / secretos | — | NuGet vulnerable, Trivy filesystem | GitHub Actions | Cada PR |
 | Imagen | — | Trivy image, Dockle (CIS) | GitHub Actions | Cada PR |

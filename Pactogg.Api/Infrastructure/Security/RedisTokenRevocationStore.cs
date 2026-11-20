@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using Pactogg.Api.Infrastructure.Options;
 using Pactogg.Api.Infrastructure.Redis;
 
 namespace Pactogg.Api.Infrastructure.Security;
@@ -8,10 +10,12 @@ public sealed class RedisTokenRevocationStore : ITokenRevocationStore
 {
     private readonly RedisConnection _redis;
     private readonly ConcurrentDictionary<string, DateTime> _fallback = new();
+    private readonly bool _required;
 
-    public RedisTokenRevocationStore(RedisConnection redis)
+    public RedisTokenRevocationStore(RedisConnection redis, IOptions<RedisOptions> options)
     {
         _redis = redis;
+        _required = options.Value.Required;
     }
 
     public async Task RevokeAsync(string jti, DateTime expiresAt, CancellationToken cancellationToken)
@@ -51,6 +55,12 @@ public sealed class RedisTokenRevocationStore : ITokenRevocationStore
             catch (RedisException)
             {
             }
+        }
+
+        // Falla cerrada: sin Redis no se puede saber si otra instancia revocó el token.
+        if (_required)
+        {
+            return true;
         }
 
         if (_fallback.TryGetValue(jti, out var expiresAt))
