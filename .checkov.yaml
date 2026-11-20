@@ -10,6 +10,7 @@ skip-check:
   - CKV_AWS_337   # Parámetros SSM SecureString con la llave aws/ssm
   - CKV_AWS_136   # ECR cifrado con AES256
   - CKV_AWS_158   # CloudWatch Logs con cifrado por defecto
+  - CKV_AWS_35    # CloudTrail cifrado con CMK: se usa SSE-S3 (gratis) en su bucket privado
   - CKV_AWS_145   # S3 con SSE-S3
   # --- Servicios de pago o fuera de la capa gratuita
   - CKV_AWS_68    # WAF en CloudFront (CLARIFICACION: solo si los créditos alcanzan)
@@ -19,6 +20,8 @@ skip-check:
   - CKV_AWS_144   # Replicación entre regiones de S3
   - CKV_AWS_310   # Failover de origen en CloudFront (un solo bucket)
   - CKV2_AWS_11   # VPC Flow Logs (ingesta en CloudWatch con costo)
+  - CKV2_AWS_10   # CloudTrail hacia CloudWatch Logs (ingesta con costo); los registros quedan en S3
+  - CKV_AWS_252   # Tema SNS por cada entrega de CloudTrail: no hay consumidor
   - CKV_AWS_86    # Logs de acceso de CloudFront (bucket extra)
   - CKV_AWS_18    # Logs de acceso de S3 (bucket extra; CloudTrail registra la administración)
   - CKV_AWS_338   # Retención de logs de 1 año (se guardan 14 días para no pagar almacenamiento)

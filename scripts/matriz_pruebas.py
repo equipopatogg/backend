@@ -26,7 +26,15 @@ anonymous = {"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/google
 
 # Reglas de negocio por módulo que cubren las pruebas unitarias.
 UNIT_BY_MODULE = {
-    "auth": ["PasswordHasherTests", "GoogleTokenValidatorTests"],
+    "auth": ["PasswordHasherTests", "GoogleTokenValidatorTests", "TokenRevocationTests"],
+    "notifications": ["NotificationServiceTests"],
+    "points": ["PointsServiceTests"],
+    "reports": ["ReportServiceTests"],
+    "reputation": ["ReputationRulesTests"],
+    "commitments": ["CommitmentAndFameServiceTests"],
+    "fame": ["CommitmentAndFameServiceTests"],
+    "audit": ["AuditQueryServiceTests"],
+    "health": ["(no aplica: sin lógica propia; HealthTests y HealthExposureTests)"],
     "contracts": ["ContractRulesTests", "TextModerationPolicyTests"],
     "evidence": ["EvidenceUrlValidatorTests", "ImageModerationPolicyTests", "ImageProcessorTests"],
     "votes": ["VotingRulesTests"],

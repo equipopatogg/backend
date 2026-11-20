@@ -1,6 +1,6 @@
 # Ayudas locales Backend PactoGG
 
-Cinco perfiles de lectura y cuatro skills propias. Son documentos de apoyo, no procesos activos. Rigen [AGENTS](../AGENTS.md), [constitución](../constitution.md) y [fase](../.specify/memory/constitution.md).
+Cinco perfiles de lectura y cuatro skills propias que guían a los agentes de IA con los que se desarrolló la API (OpenCode, Codex y Claude Code; bitácora en `Memoria.md`). MCP del proyecto: `.mcp.json` (AWS Knowledge, documentación oficial de AWS). Rigen [AGENTS](../AGENTS.md), [constitución](../constitution.md) y [fase](../.specify/memory/constitution.md).
 
 ## Perfiles
 

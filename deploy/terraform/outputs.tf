@@ -57,3 +57,8 @@ output "alarms_topic" {
   description = "Tema SNS que recibe las alarmas de CloudWatch."
   value       = aws_sns_topic.alarms.arn
 }
+
+output "cloudtrail_bucket" {
+  description = "Bucket con los registros de CloudTrail (vencen a los 90 días)."
+  value       = aws_s3_bucket.trail.id
+}
