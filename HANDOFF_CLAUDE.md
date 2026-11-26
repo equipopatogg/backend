@@ -1,5 +1,7 @@
 # Traspaso de contexto — PactoGG (backend + móvil)
 
+> **Documento histórico (2026-11-04), no describe el estado actual.** Los conteos de endpoints y pruebas y los pendientes de abajo quedaron superados. Estado vigente: [Memoria.md](Memoria.md), [CHANGELOG.md](CHANGELOG.md), [docs/plan-de-pruebas.md](docs/plan-de-pruebas.md) y [docs/matriz-pruebas-endpoints.md](docs/matriz-pruebas-endpoints.md). Las credenciales de prueba ya no se escriben en el repositorio.
+
 > Escrito el 2026-11-04 al cerrar una sesión de trabajo con Claude (chat). Léelo completo antes de tocar código.
 > Usuario: David Montoya Rodríguez (PO del equipo PueblOS, UTTT 10IDGS). Habla español; responde en español.
 
@@ -35,7 +37,7 @@ Prioridad de documentos ante conflicto: decisiones registradas en `Memoria.md` (
 - **Formato:** JSON snake_case. Éxito `{ "data": ..., "meta": {...} }`. Error `{ "code", "message", "request_id", "details" }`. Campos desconocidos → 400.
 - **Sesión:** access JWT 15 min + refresh **rotativo** (guardar siempre el nuevo; reusar uno viejo = 401). Logout `{ "refresh_token": "..." }` o `{ "all": true }` → 204.
 - **Registro:** `nickname` es **obligatorio** (decisión D-15/F2-D02 del PO; prevalece sobre CLARIFICACION #6). Regex `^[A-Za-z0-9_.-]{3,24}$`, password 12–128, `accept_privacy: true`, `privacy_version: "2026-10-01"`.
-- Pruebas: 51 verdes, 1 omitida (Testcontainers). Usuario de prueba en prod: `prueba@pactogg.com` / `PruebaSegura123!`.
+- Pruebas: 51 verdes, 1 omitida (Testcontainers).
 
 Decisiones recientes (ver `Memoria.md`):
 - **F2-D19** infraestructura costo cero: 2 EC2 t3.micro (us-east-1a/b) con Elastic IP, **Caddy** en la instancia 1 como balanceador + TLS Let's Encrypt (`sslip.io`), Redis en contenedor en la instancia 1, S3 + CloudFront (OAC), CloudWatch Logs, SSM Parameter Store. Sin ALB/NAT/ElastiCache.

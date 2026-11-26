@@ -1,0 +1,69 @@
+# Pruebas que no corren en cada PR por tiempo o por costo:
+#  - Mutación con Stryker.NET sobre Pactogg.Api (umbral de ruptura en MutationTest/stryker-config.json).
+#  - Carga con NBomber contra la API desplegada (PerformanceTest/DeployedLoadTests.cs).
+name: calidad-extendida
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 8 * * 1'
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  mutation:
+    name: stryker-mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Restore
+        run: dotnet restore Pactogg.sln
+      - name: Install Stryker.NET
+        run: dotnet tool install --global dotnet-stryker --version "4.*"
+      - name: Stryker
+        working-directory: Pactogg.Api
+        run: dotnet stryker --config-file ../MutationTest/stryker-config.json
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stryker-report
+          path: StrykerOutput/**/reports/*
+          retention-days: 30
+
+  load:
+    name: nbomber-load
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Variable del repositorio si hay dominio propio; si no, la URL pública actual del gateway.
+      PACTOGG_LOAD_BASE_URL: ${{ vars.PUBLIC_BASE_URL || 'https://52-3-200-211.sslip.io' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Carga contra la API desplegada
+        run: >
+          dotnet test PerformanceTest/PerformanceTest.csproj -c Release
+          --filter "Category=Load"
+          --logger "trx;LogFileName=load.trx" --results-directory TestResults
+      - name: Upload NBomber report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nbomber-report
+          path: |
+            PerformanceTest/bin/Release/**/nbomber-report/**
+            TestResults/load.trx
+          retention-days: 30

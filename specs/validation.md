@@ -1,7 +1,9 @@
 # Validación local — PactoGG Backend
 
 **Fecha:** 2026-11-04
-**Alcance:** build, pruebas, SCA, Terraform, despliegue AWS de costo cero y smoke público. No acredita revisión humana ni DAST.
+**Alcance:** build, pruebas, SCA, Terraform, despliegue AWS de costo cero y smoke público, validados en local el 2026-11-04. No acredita revisión humana.
+
+> **Documento histórico.** El DAST con OWASP ZAP corre desde entonces en el pipeline tras cada despliegue a `main` (job `zap-dast` de `.github/workflows/backend-ci-cd.yml`, reporte `zap-report`), y la mutación (Stryker) y la carga real (NBomber) en `.github/workflows/calidad-extendida.yml`. El estado vigente de las pruebas está en [docs/plan-de-pruebas.md](../docs/plan-de-pruebas.md).
 
 ## Resultados
 
