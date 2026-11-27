@@ -11,12 +11,13 @@
 | Seguridad | `SecurityTest` | Barrido de las rutas registradas: 401 sin token y con token falsificado en cada ruta protegida, toda ruta con decisión de autorización explícita, solo `auth/*` y `check-nickname` anónimos; salud sin fugas; cabeceras de seguridad | xUnit | Cada PR y push |
 | Contrato | `ContractTest` | `api/openapi.yaml` y Swagger documentan las rutas | xUnit | Cada PR y push |
 | Base de datos | `DatabaseTest` | Índices en un MongoDB real (Testcontainers) | xUnit + Docker | Si hay Docker |
-| Mutación | `MutationTest` | Stryker.NET sobre `Modules`, `Common` e `Infrastructure` con umbral de corte 60 % (`stryker-config.json`) | Stryker (`dotnet stryker`) | Manual antes de cada versión |
-| Rendimiento | `PerformanceTest` | Flujo base y presupuesto de latencia (200 peticiones concurrentes, p95 < 500 ms en memoria); carga contra AWS con NBomber | xUnit + NBomber | Cada PR |
+| Mutación | `MutationTest` | Stryker.NET sobre `Modules`, `Common` e `Infrastructure` con umbral de corte 60 % (`stryker-config.json`) | Stryker (`dotnet stryker`) | Workflow `calidad-extendida.yml`: cada lunes y manual antes de cada versión |
+| Rendimiento | `PerformanceTest` | Flujo base y presupuesto de latencia (200 peticiones concurrentes, p95 < 500 ms en memoria) en cada PR; carga real con NBomber contra la API en AWS (`DeployedLoadTests`: 90 peticiones en 60 s a `/health`, p95 < 800 ms y 0 errores) | xUnit + NBomber | Cada PR (en memoria) y `calidad-extendida.yml` (AWS) |
 | SAST | — | CodeQL y Semgrep (C#, secretos, OWASP) | GitHub Actions | Cada PR |
 | SCA / secretos | — | NuGet vulnerable, Trivy filesystem | GitHub Actions | Cada PR |
 | Imagen | — | Trivy image, Dockle (CIS) | GitHub Actions | Cada PR |
 | Smoke | — | `GET /health` tras desplegar | GitHub Actions | Push a `main` |
+| DAST | — | OWASP ZAP API scan guiado por `api/openapi.yaml` contra la URL pública (job `zap-dast`, reporte `zap-report`) | ZAP 2.15 | Push a `main`, después del smoke |
 
 **Criterio de salida:** 0 pruebas en rojo, 0 hallazgos CRITICAL/HIGH corregibles, 0 hallazgos Semgrep ERROR, 0 Dockle FATAL (compuerta `quality-gate`).
 
@@ -99,4 +100,4 @@ En Visual Studio: **Prueba → Explorador de pruebas → Ejecutar todas**. Con D
 
 ## 4. Límites
 
-Las pruebas de integración usan repositorios en memoria: no prueban transacciones reales de MongoDB, Redis, S3, Rekognition ni Comprehend; eso se verifica con el smoke y pruebas manuales contra AWS. Sin DAST ni pruebas de carga reales por ahora.
+Las pruebas de integración usan repositorios en memoria: no prueban transacciones reales de MongoDB, Redis, S3, Rekognition ni Comprehend; eso se verifica con el smoke, el DAST con ZAP, la carga con NBomber y pruebas manuales contra AWS. `DatabaseTest` se omite si el equipo no tiene Docker (en CI siempre hay).

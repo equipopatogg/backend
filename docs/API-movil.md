@@ -93,7 +93,7 @@ Dominios de enlace permitidos: youtube.com, youtu.be, twitch.tv, clips.twitch.tv
 ```bash
 API=https://52-3-200-211.sslip.io
 curl -s -X POST $API/api/v1/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"prueba@pactogg.com","password":"PruebaSegura123!"}'
+  -d '{"email":"<tu-correo>","password":"<tu-contraseña>"}'
 ```
 
 ## 6. Lo que todavía NO existe

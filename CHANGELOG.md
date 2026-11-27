@@ -2,6 +2,11 @@
 
 Versión semántica (mayor.menor.parche). La versión de la API está en `GET /` y en la imagen Docker (etiqueta por SHA/fecha); la ruta pública es `/api/v1`. El detalle de cada versión y sus decisiones está en `Memoria.md` (sección 9).
 
+## Sin publicar
+- Carga real con NBomber contra la API desplegada (`PerformanceTest/DeployedLoadTests.cs`) y mutación con Stryker en el workflow `calidad-extendida.yml` (cada lunes y manual).
+- Documentos alineados: el DAST con ZAP ya corre tras cada despliegue (`validation.md` y `plan-de-pruebas.md` decían lo contrario); `HANDOFF_CLAUDE.md` marcado como histórico.
+- Se quitaron del repositorio las credenciales del usuario de prueba de producción.
+
 ## 1.0.0 — 2026-11-19
 - Barrido de seguridad 401 sobre todas las rutas registradas y token falsificado; salud sin fugas.
 - Pruebas unitarias de servicio para avisos, puntos, compromisos, Fama, reportes/bloqueos, reputación y auditoría.

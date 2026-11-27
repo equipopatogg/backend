@@ -8,7 +8,7 @@ namespace PerformanceTest;
 /// <summary>
 /// Presupuesto de latencia en memoria (sin red ni base de datos reales): detecta regresiones grandes del
 /// pipeline (middlewares, límites, serialización) antes de desplegar. La carga real contra AWS se mide con
-/// NBomber (scripts de Fase 4) y no corre en cada PR para no gastar la capa gratuita.
+/// NBomber (<see cref="DeployedLoadTests"/>, workflow calidad-extendida.yml) y no corre en cada PR para no gastar la capa gratuita.
 /// </summary>
 public sealed class LatencyBudgetTests : IClassFixture<PactoggWebFactory>
 {
