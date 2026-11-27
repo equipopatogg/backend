@@ -30,7 +30,7 @@ public sealed class DeployedLoadTests
             .WithReportFolder("nbomber-report")
             .Run();
 
-        var stats = result.ScenarioStats.Get("health");
+        var stats = result.ScenarioStats.First(s => s.ScenarioName == "health");
         stats.Fail.Request.Count.Should().Be(0, "ninguna petición debe fallar ni recibir 429");
         stats.Ok.Request.Count.Should().BeGreaterThan(0);
         stats.Ok.Latency.Percent95.Should().BeLessThan(800, "p95 de /health desplegado por debajo de 800 ms");
