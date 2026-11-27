@@ -53,3 +53,11 @@ resource "aws_vpc_endpoint" "s3" {
 
   tags = { Name = "${local.name_prefix}-s3-endpoint" }
 }
+
+# El grupo de seguridad por defecto de la VPC queda sin reglas (ninguna instancia lo usa: gateway y worker
+# tienen los suyos en security.tf). Sin costo; cierra CKV2_AWS_12.
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.main.id
+
+  tags = { Name = "${local.name_prefix}-default-sin-reglas" }
+}
