@@ -18,5 +18,5 @@ Cada riesgo tiene su motivo, el control que lo reduce y qué haría falta para c
 
 ## Cerrados el 2026-11-27 (sin costo)
 - CKV2_AWS_61: ciclo de vida en los dos buckets (evidencias a 30 días, CloudTrail a 90).
-- CKV2_AWS_32: política de cabeceras de seguridad administrada en CloudFront.
+- CKV2_AWS_32: la política de cabeceras de seguridad administrada ya está en CloudFront (`cdn.tf`); la excepción sigue en Checkov solo porque no reconoce políticas administradas referidas por ID.
 - CKV2_AWS_12: grupo de seguridad por defecto de la VPC sin reglas.

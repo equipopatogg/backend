@@ -33,6 +33,7 @@ skip-check:
   - CKV_AWS_374   # Sin restricción geográfica: la app es pública
   - CKV_AWS_305   # Objeto raíz por defecto: CloudFront solo sirve evidencias, no un sitio
   - CKV_AWS_51    # Etiquetas mutables en ECR: el despliegue usa la etiqueta latest además del SHA
-  # Cerrados sin costo (ya no se omiten): CKV2_AWS_61 ciclo de vida en los dos buckets (storage.tf, cloudtrail.tf),
-  # CKV2_AWS_32 política de cabeceras de seguridad en CloudFront (cdn.tf) y CKV2_AWS_12 grupo por defecto sin reglas
-  # (network.tf). Justificación de cada excepción restante: docs/seguridad/riesgos-aceptados.md.
+  - CKV2_AWS_32   # Falso positivo: cdn.tf sí adjunta Managed-SecurityHeadersPolicy por ID; Checkov solo reconoce
+  #                 políticas declaradas como recurso en el mismo Terraform
+  # Cerrados sin costo (ya no se omiten): CKV2_AWS_61 ciclo de vida en los dos buckets (storage.tf, cloudtrail.tf)
+  # y CKV2_AWS_12 grupo por defecto sin reglas (network.tf). Justificación de cada excepción restante: docs/seguridad/riesgos-aceptados.md.
