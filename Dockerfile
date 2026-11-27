@@ -13,6 +13,10 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_NOLOGO=1 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1
+# Parches de seguridad de Debian que la imagen base aún no incluye (2026-11-27: CVE-2025-6020 en libpam, HIGH).
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 RUN addgroup --system --gid 1001 pactogg \
     && adduser --system --uid 1001 --ingroup pactogg --no-create-home pactogg
 COPY --from=build --chown=pactogg:pactogg /app/publish ./
